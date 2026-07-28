@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/disintegrator/trunkr/internal/herdr"
 )
 
 // helloCommand is the walking-skeleton action: prove we can find wt on PATH
@@ -17,10 +19,14 @@ func helloCommand() *cli.Command {
 		Name:  "hello",
 		Usage: "verify trunkr can reach wt and call back into herdr",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			hc, err := herdr.FromEnv()
+			if err != nil {
+				return err
+			}
 			wtPath, err := exec.LookPath("wt")
 			if err != nil {
 				msg := "worktrunk (wt) not found on PATH — install it from https://github.com/max-sixty/worktrunk"
-				herdr("notification", "show", "trunkr: wt missing", "--body", msg, "--sound", "request")
+				hc.Notify(ctx, "trunkr: wt missing", msg)
 				return fmt.Errorf("%s", msg)
 			}
 
@@ -31,8 +37,8 @@ func helloCommand() *cli.Command {
 			wtVersion := strings.TrimSpace(string(verOut))
 
 			body := fmt.Sprintf("%s at %s · plugin %s", wtVersion, wtPath, os.Getenv("HERDR_PLUGIN_ID"))
-			if out, err := herdr("notification", "show", "trunkr says hello", "--body", body); err != nil {
-				return fmt.Errorf("herdr callback failed: %w\n%s", err, out)
+			if err := hc.Notify(ctx, "trunkr says hello", body); err != nil {
+				return fmt.Errorf("herdr callback failed: %w", err)
 			}
 
 			fmt.Fprintf(cmd.Writer, "hello ok: %s; herdr callback ok (HERDR_BIN_PATH=%s)\n", body, os.Getenv("HERDR_BIN_PATH"))

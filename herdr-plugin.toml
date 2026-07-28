@@ -15,6 +15,57 @@ description = "Verify trunkr can reach wt and call back into herdr."
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["bin/trunkr", "hello"]
 
+[[actions]]
+id = "switch"
+title = "trunkr: switch worktree"
+description = "Switch to a worktree (prompts for the branch), focusing its panes or opening one in the configured container."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "switch"]
+
+[[actions]]
+id = "switch-tab"
+title = "trunkr: open worktree in tab"
+description = "Open a worktree in a new tab of the current workspace."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "switch", "--mode", "tab"]
+
+[[actions]]
+id = "switch-workspace"
+title = "trunkr: open worktree in workspace"
+description = "Open a worktree in a new workspace."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "switch", "--mode", "workspace"]
+
+[[actions]]
+id = "switch-split"
+title = "trunkr: open worktree in split"
+description = "Open a worktree in a split of the current pane."
+contexts = ["workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "switch", "--mode", "split"]
+
+[[actions]]
+id = "create"
+title = "trunkr: create worktree"
+description = "Create a worktree for a new branch (wt switch --create) and open a pane in it."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "create"]
+
+[[actions]]
+id = "pr-checkout"
+title = "trunkr: checkout PR"
+description = "Check out a pull request into a worktree (wt switch pr:N) and open a pane in it."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "pr"]
+
+[[panes]]
+id = "runner"
+title = "trunkr runner"
+description = "Streams wt output for switch/create/PR checkout; auto-closes on success, holds open on failure."
+# popup placement must come from the manifest: the 0.7.5 CLI --placement flag
+# cannot request popup.
+placement = "popup"
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" runner"]
+
 [[panes]]
 id = "hello-pane"
 title = "trunkr hello"

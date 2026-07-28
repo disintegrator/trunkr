@@ -1,9 +1,11 @@
 package wt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 // SwitchAction is what wt switch did to satisfy the request.
@@ -45,11 +47,10 @@ type SwitchOptions struct {
 	NoHooks bool
 }
 
-// Switch runs wt switch for ref — a branch name, pr:N / mr:N shortcut, or PR
-// URL — creating the worktree if needed, and returns where it lives. --no-cd
-// is always passed: trunkr opens panes at the returned path instead of
-// relying on wt's shell-wrapper directory change.
-func (c *Client) Switch(ctx context.Context, dir, ref string, opts SwitchOptions) (SwitchResult, error) {
+// switchArgs builds the wt switch argv. --no-cd is always passed: trunkr
+// opens panes at the returned path instead of relying on wt's shell-wrapper
+// directory change.
+func switchArgs(ref string, opts SwitchOptions) []string {
 	args := []string{"switch", ref, "--no-cd", "--format", "json"}
 	if opts.Create {
 		args = append(args, "--create")
@@ -63,10 +64,10 @@ func (c *Client) Switch(ctx context.Context, dir, ref string, opts SwitchOptions
 	if opts.NoHooks {
 		args = append(args, "--no-hooks")
 	}
-	out, err := c.run(ctx, dir, args...)
-	if err != nil {
-		return SwitchResult{}, err
-	}
+	return args
+}
+
+func parseSwitchResult(out []byte) (SwitchResult, error) {
 	var res SwitchResult
 	if err := json.Unmarshal(out, &res); err != nil {
 		return SwitchResult{}, fmt.Errorf("wt switch: parsing JSON output: %w", err)
@@ -75,6 +76,33 @@ func (c *Client) Switch(ctx context.Context, dir, ref string, opts SwitchOptions
 		return SwitchResult{}, fmt.Errorf("wt switch: JSON output has no path")
 	}
 	return res, nil
+}
+
+// Switch runs wt switch for ref — a branch name, pr:N / mr:N shortcut, or PR
+// URL — creating the worktree if needed, and returns where it lives.
+func (c *Client) Switch(ctx context.Context, dir, ref string, opts SwitchOptions) (SwitchResult, error) {
+	out, err := c.run(ctx, dir, switchArgs(ref, opts)...)
+	if err != nil {
+		return SwitchResult{}, err
+	}
+	return parseSwitchResult(out)
+}
+
+// SwitchStreaming runs wt switch attached to the caller's terminal: stdin and
+// stderr pass through so wt's hook-approval prompts work interactively, while
+// stdout (the JSON result) is captured and parsed. This is the runner-surface
+// variant of Switch.
+func (c *Client) SwitchStreaming(ctx context.Context, dir, ref string, opts SwitchOptions, stdin io.Reader, stderr io.Writer) (SwitchResult, error) {
+	cmd, err := c.Command(ctx, dir, switchArgs(ref, opts)...)
+	if err != nil {
+		return SwitchResult{}, err
+	}
+	var stdout bytes.Buffer
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return SwitchResult{}, fmt.Errorf("wt switch %s: %w", ref, err)
+	}
+	return parseSwitchResult(stdout.Bytes())
 }
 
 // RemoveResult is one entry of wt remove --format json output.

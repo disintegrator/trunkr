@@ -1,0 +1,49 @@
+{
+  "skill_name": "pull-request",
+  "evals": [
+    {
+      "id": 0,
+      "name": "feat-uncommitted",
+      "prompt": "I just finished adding the session picker feature (src/picker.sh plus a change in src/app.sh). Can you open a PR for it?",
+      "expected_output": "A new feat/* branch off main containing a conventional feat commit that includes the code AND a .bumper/bump-*.md file with a minor bump for the sprocket group and a user-facing changelog message; branch pushed to origin; PR title/body drafted in conventional style (gh pr create will fail against the local remote — the agent should still produce the title/body).",
+      "files": ["sandbox repo: uncommitted new feature on main"],
+      "assertions": [
+        "A .bumper/bump-*.md file is committed on the PR branch",
+        "The bump file records a minor bump for the sprocket group",
+        "The bump changelog message describes the feature from a user's perspective (no file paths or internals)",
+        "Work is committed on a non-main branch that was pushed to origin",
+        "The commit message follows conventional commits with type feat",
+        "The PR title in outputs/pr.md is conventional (feat...)",
+        "bumper commit was NOT run (no .bumper/versions.toml created, no tags)"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "docs-only",
+      "prompt": "cleaned up the docs a bit — put up a PR please",
+      "expected_output": "A docs/chore branch with a conventional docs commit including an EMPTY bump file (bumper bump --empty) since there is no user-facing version impact; branch pushed; PR body notes no version impact.",
+      "files": ["sandbox repo: uncommitted README + docs/usage.md changes on main"],
+      "assertions": [
+        "An empty bump file (no level recorded) is committed, matching bumper bump --empty for a no-version-impact change",
+        "The commit message follows conventional commits with type docs or chore",
+        "Work is committed on a non-main branch that was pushed to origin",
+        "The PR body notes that there is no version impact",
+        "bumper commit was NOT run (no .bumper/versions.toml created, no tags)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "breaking-committed",
+      "prompt": "the config rename branch is ready, push it up and create the PR",
+      "expected_output": "On the existing feat/rename-config branch (which has a committed breaking rename of poll_interval to poll_interval_ms and no bump file), the agent adds a .bumper/bump-*.md with a MAJOR bump and user-facing changelog entry, commits it, pushes the branch, and drafts a PR title with the breaking-change marker (!).",
+      "files": ["sandbox repo: committed breaking change on feat/rename-config branch"],
+      "assertions": [
+        "A bump file recording a major bump for the sprocket group is committed on feat/rename-config",
+        "The feat/rename-config branch was pushed to origin",
+        "The PR title in outputs/pr.md carries the breaking-change marker (!)",
+        "The original rename commit is preserved in branch history (not squashed away)",
+        "bumper commit was NOT run (no .bumper/versions.toml created, no tags)"
+      ]
+    }
+  ]
+}

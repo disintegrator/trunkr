@@ -50,7 +50,7 @@ func (m Model) View() string {
 
 	for i, r := range visible {
 		cursor := "  "
-		if i == m.cursor && m.mode == modeList {
+		if i == m.cursor && (m.mode == modeList || m.mode == modeConfirm) {
 			cursor = cursorStyle.Render("▸ ")
 		}
 
@@ -96,6 +96,8 @@ func (m Model) View() string {
 		b.WriteString(promptStyle.Render("filter: ") + m.filter + "█\n")
 	case modeInput:
 		b.WriteString(promptStyle.Render(m.prompt) + m.input + "█\n")
+	case modeConfirm:
+		b.WriteString(promptStyle.Render(m.prompt) + "\n")
 	default:
 		if m.status != "" {
 			b.WriteString(msgStyle.Render("→ "+m.status) + "\n")

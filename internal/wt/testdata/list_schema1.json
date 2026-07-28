@@ -1,0 +1,58 @@
+[
+  {
+    "branch": "main",
+    "path": "/home/user/repo",
+    "kind": "worktree",
+    "commit": {"sha": "2578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "2578f13", "message": "init", "timestamp": 1785248452},
+    "working_tree": {"staged": false, "modified": false, "untracked": false, "renamed": false, "deleted": false, "diff": {"added": 0, "deleted": 0}},
+    "main_state": "is_main",
+    "worktree": {"detached": false},
+    "is_main": true,
+    "is_current": true,
+    "is_previous": true,
+    "statusline": "main  ^",
+    "symbols": "^"
+  },
+  {
+    "branch": "feat-a",
+    "path": "/home/user/repo.feat-a",
+    "kind": "worktree",
+    "commit": {"sha": "2578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "2578f13", "message": "init", "timestamp": 1785248452},
+    "working_tree": {"staged": true, "modified": false, "untracked": false, "renamed": false, "deleted": false, "diff": {"added": 10, "deleted": 2}},
+    "main_state": "diverged",
+    "operation_state": "conflicts",
+    "main": {"ahead": 3, "behind": 1, "diff": {"added": 50, "deleted": 20}},
+    "worktree": {"detached": false},
+    "is_main": false,
+    "is_current": false,
+    "is_previous": false,
+    "statusline": "feat-a …",
+    "symbols": "!↕"
+  },
+  {
+    "branch": null,
+    "path": "/home/user/repo.detached",
+    "kind": "worktree",
+    "commit": {"sha": "9578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "9578f13", "message": "detached", "timestamp": 1785248452},
+    "working_tree": {"staged": false, "modified": false, "untracked": false, "renamed": false, "deleted": false, "diff": {"added": 0, "deleted": 0}},
+    "main_state": "detached",
+    "worktree": {"detached": true},
+    "is_main": false,
+    "is_current": false,
+    "is_previous": false,
+    "statusline": "(detached)",
+    "symbols": ""
+  },
+  {
+    "branch": "branch-only",
+    "kind": "branch",
+    "commit": {"sha": "1178f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "1178f13", "message": "no worktree", "timestamp": 1785248452},
+    "main_state": "unmerged",
+    "main": {"ahead": 1, "behind": 0, "diff": {"added": 5, "deleted": 0}},
+    "is_main": false,
+    "is_current": false,
+    "is_previous": false,
+    "statusline": "branch-only",
+    "symbols": ""
+  }
+]

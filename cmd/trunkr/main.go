@@ -20,6 +20,7 @@ func main() {
 			helloPaneCommand(),
 			actionCommand(),
 			runnerCommand(),
+			pickerPaneCommand(),
 		},
 	}
 	if err := root.Run(context.Background(), os.Args); err != nil {

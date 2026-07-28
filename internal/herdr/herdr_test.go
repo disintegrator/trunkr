@@ -138,6 +138,28 @@ func TestPaneSplit(t *testing.T) {
 	}
 }
 
+func TestPaneProcessInfo(t *testing.T) {
+	logDir := t.TempDir()
+	c := fakeHerdr(t, logDir)
+	t.Setenv("FAKE_HERDR_STDOUT", `{"id":"cli:pane:process_info","result":{"type":"pane_process_info","process_info":{
+		"pane_id":"w1:p5","shell_pid":4200,"foreground_process_group_id":4321,
+		"foreground_processes":[{"argv":["claude","--continue"],"cmdline":"claude --continue","cwd":"/repo.feat","name":"claude","pid":4321}]}}}`)
+
+	info, err := c.PaneProcessInfo(context.Background(), "w1:p5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.PaneID != "w1:p5" || info.ShellPID != 4200 || info.ForegroundProcessGroupID != 4321 {
+		t.Errorf("info = %+v, want pane w1:p5 shell 4200 fg group 4321", info)
+	}
+	if len(info.ForegroundProcesses) != 1 || info.ForegroundProcesses[0].Name != "claude" || info.ForegroundProcesses[0].PID != 4321 {
+		t.Errorf("foreground processes = %+v, want one claude pid 4321", info.ForegroundProcesses)
+	}
+	if got := loggedArgs(t, logDir); !equal(got, []string{"pane", "process-info", "--pane", "w1:p5"}) {
+		t.Errorf("args = %v", got)
+	}
+}
+
 func TestPaneRun(t *testing.T) {
 	tests := []struct {
 		name string

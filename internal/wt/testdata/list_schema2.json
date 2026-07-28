@@ -1,0 +1,60 @@
+{
+  "schema": 2,
+  "repo": {
+    "default_branch": "main",
+    "forge": {"url": "https://github.com/org/repo", "provider": "github", "host": "github.com", "owner": "org", "name": "repo", "remote": "origin"}
+  },
+  "collected": {"ci": false, "summary": false},
+  "items": [
+    {
+      "branch": "main",
+      "head": {"sha": "2578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "2578f13", "subject": "init", "committed_at": "2026-07-28T14:20:52Z"},
+      "worktree": {
+        "path": "/home/user/repo",
+        "main": true,
+        "current": true,
+        "previous": true,
+        "detached": false,
+        "branch_mismatch": false,
+        "changes": {"staged": false, "modified": false, "untracked": false, "renamed": false, "deleted": false, "conflicted": false, "diff": {"added": 0, "deleted": 0}}
+      },
+      "display": {"state": "is_main", "symbols": "^", "statusline": "main  ^"}
+    },
+    {
+      "branch": "feat-a",
+      "head": {"sha": "2578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "2578f13", "subject": "init", "committed_at": "2026-07-28T14:20:52Z"},
+      "worktree": {
+        "path": "/home/user/repo.feat-a",
+        "main": false,
+        "current": false,
+        "previous": false,
+        "detached": false,
+        "branch_mismatch": false,
+        "changes": {"staged": false, "modified": true, "untracked": true, "renamed": false, "deleted": false, "conflicted": false, "diff": {"added": 10, "deleted": 2}}
+      },
+      "default_branch": {"ahead": 3, "behind": 1, "diff": {"added": 50, "deleted": 20}, "orphan": false, "integration": null, "merge_conflicts": false},
+      "upstream": {"remote": "origin", "branch": "feat-a", "ahead": 0, "behind": 2},
+      "display": {"state": "diverged", "symbols": "!↕", "statusline": "feat-a …"}
+    },
+    {
+      "branch": null,
+      "head": {"sha": "9578f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "9578f13", "subject": "detached", "committed_at": "2026-07-28T14:20:52Z"},
+      "worktree": {
+        "path": "/home/user/repo.detached",
+        "main": false,
+        "current": false,
+        "previous": false,
+        "detached": true,
+        "branch_mismatch": false,
+        "changes": {"staged": false, "modified": false, "untracked": false, "renamed": false, "deleted": false, "conflicted": true, "diff": {"added": 0, "deleted": 0}}
+      },
+      "display": {"state": "conflicts", "symbols": "✖", "statusline": "(detached)"}
+    },
+    {
+      "branch": "branch-only",
+      "head": {"sha": "1178f1301bbfc9a900eb8e8ac78bc7158a1464f0", "short_sha": "1178f13", "subject": "no worktree", "committed_at": "2026-07-28T14:20:52Z"},
+      "default_branch": {"ahead": 1, "behind": 0, "diff": {"added": 5, "deleted": 0}, "orphan": false, "integration": {"reason": "no_added_changes"}, "merge_conflicts": false},
+      "display": {"state": "unmerged", "symbols": "", "statusline": "branch-only"}
+    }
+  ]
+}

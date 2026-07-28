@@ -1,0 +1,28 @@
+version: 2
+
+project_name: trunkr
+
+builds:
+  - main: ./cmd/trunkr
+    binary: trunkr
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - herdr-plugin.toml
+
+# Release notes come from Bumper (--release-notes in the workflow).
+changelog:
+  disable: true

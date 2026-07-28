@@ -240,11 +240,41 @@ func TestActionDone(t *testing.T) {
 	}
 }
 
-func TestDestroyStubbed(t *testing.T) {
+func TestDestroyConfirmFlow(t *testing.T) {
 	h := newHarness(rows3())
+	h.press(keyRunes("j")) // feat/auth, 2 panes
 	h.press(keyRunes("d"))
-	if len(h.actions) != 0 || !strings.Contains(h.model.status, "destroy") {
-		t.Fatalf("d should only set a status: actions=%+v status=%q", h.actions, h.model.status)
+	if h.model.mode != modeConfirm {
+		t.Fatal("d should enter confirm mode")
+	}
+	if !strings.Contains(h.model.prompt, "feat/auth") || !strings.Contains(h.model.prompt, "DISCARDS") || !strings.Contains(h.model.prompt, "2 pane(s)") {
+		t.Fatalf("prompt = %q, want branch, discard warning, and pane count", h.model.prompt)
+	}
+	h.press(keyRunes("y"))
+	want := Action{Op: "destroy", Ref: "feat/auth"}
+	if len(h.actions) != 1 || h.actions[0] != want {
+		t.Fatalf("actions = %+v, want [%+v]", h.actions, want)
+	}
+}
+
+func TestDestroyConfirmCancels(t *testing.T) {
+	h := newHarness(rows3())
+	h.press(keyRunes("j"))
+	h.press(keyRunes("d"))
+	h.press(keyRunes("n"))
+	if len(h.actions) != 0 || h.model.mode != modeList || h.model.status != "cancelled" {
+		t.Fatalf("n should cancel: actions=%+v mode=%d status=%q", h.actions, h.model.mode, h.model.status)
+	}
+}
+
+func TestDestroyRefusesTrunk(t *testing.T) {
+	h := newHarness(rows3()) // cursor on main (trunk)
+	h.press(keyRunes("d"))
+	if h.model.mode != modeList || len(h.actions) != 0 {
+		t.Fatal("trunk row must not enter destroy confirm")
+	}
+	if !strings.Contains(h.model.status, "trunk") {
+		t.Fatalf("status = %q, want trunk refusal", h.model.status)
 	}
 }
 

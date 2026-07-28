@@ -65,6 +65,13 @@ contexts = ["tab", "pane"]
 command = ["bin/trunkr", "action", "merge"]
 
 [[actions]]
+id = "destroy"
+title = "trunkr: destroy worktree"
+description = "Destroy the current worktree: discard uncommitted changes, close its panes, and remove it (wt remove -f)."
+contexts = ["tab", "pane"]
+command = ["bin/trunkr", "action", "destroy"]
+
+[[actions]]
 id = "pr-checkout"
 title = "trunkr: checkout PR"
 description = "Check out a pull request into a worktree (wt switch pr:N) and open a pane in it."
@@ -81,7 +88,7 @@ command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" picker"]
 [[panes]]
 id = "runner"
 title = "trunkr runner"
-description = "Streams wt output for switch/create/PR checkout/merge; auto-closes on success, holds open on failure."
+description = "Streams wt output for switch/create/PR checkout/merge and asks the destroy confirm; auto-closes on success, holds open on failure."
 # popup placement must come from the manifest: the 0.7.5 CLI --placement flag
 # cannot request popup.
 placement = "popup"

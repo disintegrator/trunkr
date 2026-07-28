@@ -63,6 +63,8 @@ func opTitle(op string) string {
 		return "create"
 	case "pr":
 		return "PR checkout"
+	case "merge":
+		return "merge"
 	default:
 		return "switch"
 	}
@@ -91,6 +93,10 @@ func runRunner(ctx context.Context) error {
 	wtc, err := wt.New(cfg.WTPath)
 	if err != nil {
 		return fail(err)
+	}
+
+	if req.Op == "merge" {
+		return runMerge(ctx, hc, wtc, cfg, req, fail)
 	}
 
 	ref := req.Ref
@@ -144,6 +150,133 @@ func runRunner(ctx context.Context) error {
 		return fail(err)
 	}
 	return nil
+}
+
+// runMerge is the merge flow: wt merge --no-remove streamed in this terminal
+// (hook prompts work, no -y), then the controlled teardown — close the
+// worktree's panes, then wt remove — so nothing is left sitting in a
+// directory a removal is deleting. On failure there is no teardown: the
+// worktree and panes stay untouched and the runner holds open with the error.
+func runMerge(ctx context.Context, hc *herdr.Client, wtc *wt.Client, cfg config.Config, req runnerRequest, fail func(error) error) error {
+	list, err := wtc.List(ctx, req.Dir)
+	if err != nil {
+		return fail(err)
+	}
+	target, err := findWorktree(list, req.Ref, req.Dir)
+	if err != nil {
+		return fail(err)
+	}
+
+	paths := make([]string, 0, len(list.Worktrees))
+	trunkPath := ""
+	for _, w := range list.Worktrees {
+		paths = append(paths, w.Path)
+		if w.IsMain {
+			trunkPath = w.Path
+		}
+	}
+	if trunkPath == "" {
+		return fail(errors.New("wt list reports no main worktree"))
+	}
+
+	// The picker's inline y/N confirm sets TRUNKR_CONFIRMED; the standalone
+	// action confirms here, in the popup terminal.
+	if os.Getenv(envConfirmed) != "1" {
+		panes, err := hc.PaneList(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		live := len(mapping.PanesIn(panes, paths, target.Path))
+		fmt.Fprintf(os.Stderr, "merge %s into trunk: commits any dirty changes, closes %d pane(s), removes the worktree\n", target.Branch, live)
+		answer, err := promptLine("proceed? [y/N]")
+		if err != nil {
+			return fail(err)
+		}
+		if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
+			fmt.Fprintln(os.Stderr, "cancelled")
+			return nil
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "→ wt merge --no-remove (%s)\n", target.Branch)
+	var wtOut bytes.Buffer
+	opts := wt.MergeOptions{NoRemove: true, ExtraArgs: cfg.MergeExtraArgs}
+	if _, err := wtc.MergeStreaming(ctx, target.Path, opts, os.Stdin, io.MultiWriter(os.Stderr, &wtOut)); err != nil {
+		if tail := gist(wtOut.String()); tail != "" {
+			hc.Notify(ctx, "trunkr: merge failed", tail)
+			return failHold(err)
+		}
+		return fail(err)
+	}
+
+	// Re-list panes after the merge: hooks can run long, and the set that
+	// matters is the one alive now.
+	panes, err := hc.PaneList(ctx)
+	if err != nil {
+		return fail(fmt.Errorf("merged, but listing panes for teardown failed: %w (worktree kept; run wt remove %s once resolved)", err, target.Branch))
+	}
+	// HERDR_PANE_ID is the pane hosting this process when the merge runs
+	// in-overlay from the picker — closing it would kill the runner mid-
+	// teardown, so it is skipped and outlives the worktree.
+	selfPane := os.Getenv("HERDR_PANE_ID")
+	for _, p := range mapping.PanesIn(panes, paths, target.Path) {
+		if p.PaneID == selfPane {
+			continue
+		}
+		if err := hc.PaneClose(ctx, p.PaneID); err != nil {
+			return fail(fmt.Errorf("merged, but closing pane %s failed: %w (worktree kept; run wt remove %s once resolved)", p.PaneID, err, target.Branch))
+		}
+	}
+
+	// Remove from the trunk worktree: req.Dir may be inside the directory
+	// being deleted.
+	fmt.Fprintf(os.Stderr, "→ wt remove %s\n", target.Branch)
+	if _, err := wtc.RemoveStreaming(ctx, trunkPath, []string{target.Branch}, wt.RemoveOptions{}, os.Stdin, os.Stderr); err != nil {
+		return fail(fmt.Errorf("merged and panes closed, but removing the worktree failed: %w", err))
+	}
+	return nil
+}
+
+// findWorktree resolves which worktree a merge targets: by branch when ref is
+// set (the picker names the row), otherwise the worktree containing dir (the
+// standalone "merge current worktree" action). The trunk worktree is refused —
+// there is nothing to merge it into.
+func findWorktree(list wt.ListResult, ref, dir string) (wt.Worktree, error) {
+	var target wt.Worktree
+	found := false
+	if ref != "" {
+		for _, w := range list.Worktrees {
+			if w.Branch == ref {
+				target, found = w, true
+				break
+			}
+		}
+		if !found {
+			return wt.Worktree{}, fmt.Errorf("no worktree for branch %q", ref)
+		}
+	} else {
+		paths := make([]string, 0, len(list.Worktrees))
+		for _, w := range list.Worktrees {
+			paths = append(paths, w.Path)
+		}
+		best := mapping.BestMatch(dir, paths)
+		for _, w := range list.Worktrees {
+			if w.Path == best {
+				target, found = w, true
+				break
+			}
+		}
+		if !found {
+			return wt.Worktree{}, fmt.Errorf("%s is not inside a worktree — invoke merge from a worktree pane or pick a branch", dir)
+		}
+	}
+	if target.IsMain {
+		return wt.Worktree{}, errors.New("refusing to merge the trunk worktree — merge runs from a feature worktree")
+	}
+	if target.Branch == "" {
+		return wt.Worktree{}, fmt.Errorf("worktree at %s has no branch (detached HEAD) — nothing to merge", target.Path)
+	}
+	return target, nil
 }
 
 // openOrFocus lands the user in the switched worktree per the pane-mapping

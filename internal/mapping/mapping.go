@@ -19,15 +19,17 @@ func PanesIn(panes []herdr.Pane, worktreePaths []string, target string) []herdr.
 	target = filepath.Clean(target)
 	var out []herdr.Pane
 	for _, p := range panes {
-		if bestMatch(p.Cwd, worktreePaths) == target || bestMatch(p.ForegroundCwd, worktreePaths) == target {
+		if BestMatch(p.Cwd, worktreePaths) == target || BestMatch(p.ForegroundCwd, worktreePaths) == target {
 			out = append(out, p)
 		}
 	}
 	return out
 }
 
-// bestMatch returns the longest worktree path containing dir, or "".
-func bestMatch(dir string, worktreePaths []string) string {
+// BestMatch returns the longest worktree path containing dir, or "". The
+// longest-wins rule keeps a directory inside a nested worktree from matching
+// an enclosing one.
+func BestMatch(dir string, worktreePaths []string) string {
 	if dir == "" {
 		return ""
 	}

@@ -73,6 +73,15 @@ func runPicker(ctx context.Context) error {
 		if err != nil {
 			return picker.RefreshedMsg{Err: err}
 		}
+		// Re-anchor on the trunk worktree: dir may start inside a feature
+		// worktree that a merge later deletes, and the trunk path outlives
+		// every worktree operation the picker can trigger.
+		for _, w := range list.Worktrees {
+			if w.IsMain && w.Path != "" {
+				dir = w.Path
+				break
+			}
+		}
 		panes, err := hc.PaneList(ctx)
 		if err != nil {
 			return picker.RefreshedMsg{Err: err}
@@ -86,6 +95,12 @@ func runPicker(ctx context.Context) error {
 	}
 	execAction := func(a picker.Action) tea.Cmd {
 		child := exec.CommandContext(ctx, self, "runner")
+		// The picker's inline y/N confirm already ran for merge, so the
+		// runner must not re-confirm.
+		confirmed := ""
+		if a.Op == "merge" {
+			confirmed = "1"
+		}
 		// Later entries win: override the picker pane's own TRUNKR_* vars
 		// wholesale so no stale value leaks into the runner.
 		child.Env = append(os.Environ(),
@@ -93,11 +108,14 @@ func runPicker(ctx context.Context) error {
 			envMode+"="+a.Mode,
 			envRef+"="+a.Ref,
 			envDir+"="+dir,
+			envConfirmed+"="+confirmed,
 		)
 		return tea.ExecProcess(child, func(err error) tea.Msg {
 			// Switch-family actions end in a focus change the overlay would
-			// sit on top of, so success closes the picker.
-			return picker.ActionDoneMsg{Err: err, Quit: err == nil}
+			// sit on top of, so success closes the picker. A merged worktree
+			// just leaves the list — the picker stays open and refreshes.
+			quit := err == nil && a.Op != "merge"
+			return picker.ActionDoneMsg{Err: err, Quit: quit}
 		})
 	}
 

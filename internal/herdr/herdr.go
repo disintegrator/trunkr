@@ -186,6 +186,12 @@ func (c *Client) PaneRun(ctx context.Context, paneID string, argv []string) erro
 	return err
 }
 
+// PaneClose closes a pane by id.
+func (c *Client) PaneClose(ctx context.Context, paneID string) error {
+	_, err := c.run(ctx, "pane", "close", paneID)
+	return err
+}
+
 // TabFocus focuses a tab by id.
 func (c *Client) TabFocus(ctx context.Context, tabID string) error {
 	_, err := c.run(ctx, "tab", "focus", tabID)

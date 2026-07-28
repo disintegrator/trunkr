@@ -1,5 +1,13 @@
 # Changelog
 
+## trunkr 0.1.1
+
+### Patch Changes
+
+- 1d6d11e: Fix `agent_command` entries with multiple words (e.g. `["sh", "-c", "..."]`) being split into separate shell commands when launched in a pane
+- d2c94af: Fix the configured agent command occasionally being swallowed when it was sent before a fresh pane's shell finished starting up
+- 235d553: Fix actions failing on fresh installs: the dev `mise.toml` is now removed from installed checkouts, so mise-shimmed tools (like `wt`) no longer hard-error when run from the plugin root
+
 ## trunkr 0.1.0
 
 ### Minor Changes

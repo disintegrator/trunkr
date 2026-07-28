@@ -1,0 +1,25 @@
+id = "disintegrator.trunkr"
+name = "trunkr"
+version = "0.0.0"
+min_herdr_version = "0.7.5"
+description = "worktrunk worktrees inside herdr: switch, picker, merge, destroy, PR checkout."
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["go", "build", "-o", "bin/trunkr", "./cmd/trunkr"]
+
+[[actions]]
+id = "hello"
+title = "trunkr: hello"
+description = "Verify trunkr can reach wt and call back into herdr."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "hello"]
+
+[[panes]]
+id = "hello-pane"
+title = "trunkr hello"
+description = "Bubble Tea smoke-test pane."
+placement = "overlay"
+# Pane commands spawn through the normal pane launcher (PATH resolution, not
+# plugin-root-relative like action commands) — hence the $HERDR_PLUGIN_ROOT wrapper.
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" hello-pane"]

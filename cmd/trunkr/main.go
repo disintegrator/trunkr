@@ -18,6 +18,8 @@ func main() {
 		Commands: []*cli.Command{
 			helloCommand(),
 			helloPaneCommand(),
+			actionCommand(),
+			runnerCommand(),
 		},
 	}
 	if err := root.Run(context.Background(), os.Args); err != nil {

@@ -37,7 +37,7 @@ jobs:
       - name: Read version and release notes from Bumper
         id: bumper
         run: |
-          bumper_version="$(mise bumper current)"
+          bumper_version="$(bumper current)"
           tag="v$bumper_version"
 
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
@@ -49,7 +49,7 @@ jobs:
 
           notes_file="$(mktemp)"
           echo "RELEASE_NOTES_FILE=$notes_file" >> $GITHUB_ENV
-          mise bumper cat --version "$bumper_version" > "$notes_file"
+          bumper cat --version "$bumper_version" > "$notes_file"
 
           echo "release=true" >> $GITHUB_OUTPUT
 

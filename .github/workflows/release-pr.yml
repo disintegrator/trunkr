@@ -28,7 +28,7 @@ jobs:
       - name: Commit pending bumps
         id: bumper
         run: |
-          groups=$(mise bumper commit)
+          groups=$(bumper commit)
           if [ -z "$groups" ]; then
             echo "No pending bumps to commit. Exiting."
             exit 0
@@ -37,8 +37,8 @@ jobs:
           # Build a nice release notes file to use as the PR description
           notes_file="$(mktemp)"
           for group in $groups; do
-            latest_version=$(mise bumper current --group "$group")
-            mise bumper cat --group "$group" --version "$latest_version" >> "$notes_file"
+            latest_version=$(bumper current --group "$group")
+            bumper cat --group "$group" --version "$latest_version" >> "$notes_file"
             echo "" >> "$notes_file"
           done
 

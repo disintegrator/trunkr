@@ -50,8 +50,7 @@ const (
 	inputPR
 )
 
-// bindableActions are the [picker.keys] names this slice acts on, plus
-// destroy, whose flow lands with its own ticket.
+// actionOrder fixes the help-line ordering of the [picker.keys] actions.
 var actionOrder = []string{"tab", "workspace", "split", "create", "pr", "merge", "destroy"}
 
 // Model is the picker's Bubble Tea model. Exec and Refresh are injected so
@@ -288,7 +287,15 @@ func (m Model) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.prompt = fmt.Sprintf("merge %s into trunk? commits dirty changes, closes %d pane(s), removes the worktree [y/N] ", row.Branch, row.Panes)
 		}
 	case "destroy":
-		m.status = "destroy arrives with the destroy flow — not in this trunkr version yet"
+		if row, ok := m.current(); ok {
+			if row.IsTrunk {
+				m.status = "cannot destroy the trunk worktree"
+				return m, nil
+			}
+			m.mode = modeConfirm
+			m.confirmAction = Action{Op: "destroy", Ref: row.Branch}
+			m.prompt = fmt.Sprintf("destroy %s? DISCARDS uncommitted changes, closes %d pane(s), removes the worktree [y/N] ", row.Branch, row.Panes)
+		}
 	}
 	return m, nil
 }
@@ -298,12 +305,12 @@ func (m Model) helpLine() string {
 	parts := []string{"enter switch"}
 	labels := map[string]string{
 		"tab": "tab", "workspace": "workspace", "split": "split",
-		"create": "create", "pr": "pr", "merge": "merge",
+		"create": "create", "pr": "pr", "merge": "merge", "destroy": "destroy",
 	}
 	for _, action := range actionOrder {
 		label, active := labels[action]
 		if !active {
-			continue // destroy: hidden until its flow lands
+			continue
 		}
 		if key := m.keyFor(action); key != "" {
 			parts = append(parts, fmt.Sprintf("%s %s", key, label))

@@ -15,7 +15,7 @@ import (
 // popup they open. Actions are the only writer; the runner is the only
 // reader. The picker pane will reuse the same contract.
 const (
-	envOp          = "TRUNKR_OP"           // switch | create | pr | merge
+	envOp          = "TRUNKR_OP"           // switch | create | pr | merge | destroy
 	envMode        = "TRUNKR_MODE"         // container override: tab | workspace | split (generic when unset)
 	envRef         = "TRUNKR_REF"          // prefilled ref; the runner prompts when unset
 	envDir         = "TRUNKR_DIR"          // target repo/workspace directory
@@ -71,6 +71,14 @@ func actionCommand() *cli.Command {
 				ArgsUsage: "[branch]",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return openRunner(ctx, "merge", "", cmd.Args().First())
+				},
+			},
+			{
+				Name:      "destroy",
+				Usage:     "destroy a worktree: discard changes, close its panes, remove it",
+				ArgsUsage: "[branch]",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return openRunner(ctx, "destroy", "", cmd.Args().First())
 				},
 			},
 			{

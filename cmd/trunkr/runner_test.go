@@ -107,7 +107,7 @@ func TestFindWorktree(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := findWorktree(list, tt.ref, tt.dir)
+			got, err := findWorktree(list, tt.ref, tt.dir, "merge")
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)

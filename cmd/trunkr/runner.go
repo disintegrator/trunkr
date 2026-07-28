@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -420,9 +421,45 @@ func openOrFocus(ctx context.Context, hc *herdr.Client, wtc *wt.Client, cfg conf
 		return err
 	}
 	if len(cfg.AgentCommand) > 0 && pane.PaneID != "" {
+		waitPaneReady(ctx, func(ctx context.Context) (herdr.PaneProcessInfo, error) {
+			return hc.PaneProcessInfo(ctx, pane.PaneID)
+		}, paneReadyAttempts, paneReadyDelay)
 		return hc.PaneRun(ctx, pane.PaneID, cfg.AgentCommand)
 	}
 	return nil
+}
+
+// The readiness wait is bounded at attempts×delay (~2s) so a shell that never
+// idles (e.g. an rc file that execs into something) can't hang the runner.
+const (
+	paneReadyAttempts = 20
+	paneReadyDelay    = 100 * time.Millisecond
+)
+
+// waitPaneReady polls a fresh pane's process info until its shell is idle at
+// an interactive prompt, so the agent command sent next isn't swallowed by
+// shell startup (#33). Best-effort by design: on timeout, poll error, or
+// context cancellation it returns and the command is sent anyway — a late
+// delivery beats a silent one.
+func waitPaneReady(ctx context.Context, poll func(context.Context) (herdr.PaneProcessInfo, error), attempts int, delay time.Duration) {
+	for range attempts {
+		if info, err := poll(ctx); err == nil && paneShellIdle(info) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+	}
+}
+
+// paneShellIdle reports whether the pane's shell is sitting at an interactive
+// prompt: the shell exists and is itself the foreground process group. During
+// startup there is no shell yet or rc-file children hold the foreground; once
+// the agent command runs, its process group takes over.
+func paneShellIdle(info herdr.PaneProcessInfo) bool {
+	return info.ShellPID > 0 && info.ForegroundProcessGroupID == info.ShellPID
 }
 
 // decideOpen resolves the post-switch plan. An explicit mode always opens a

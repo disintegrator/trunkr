@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/disintegrator/trunkr/internal/config"
+	"github.com/disintegrator/trunkr/internal/herdr"
 	"github.com/disintegrator/trunkr/internal/wt"
 )
 
@@ -122,6 +126,83 @@ func TestFindWorktree(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPaneShellIdle(t *testing.T) {
+	tests := []struct {
+		name string
+		info herdr.PaneProcessInfo
+		want bool
+	}{
+		{
+			name: "shell at prompt",
+			info: herdr.PaneProcessInfo{ShellPID: 4200, ForegroundProcessGroupID: 4200},
+			want: true,
+		},
+		{
+			name: "no shell yet",
+			info: herdr.PaneProcessInfo{},
+			want: false,
+		},
+		{
+			name: "startup child holds the foreground",
+			info: herdr.PaneProcessInfo{ShellPID: 4200, ForegroundProcessGroupID: 4321},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := paneShellIdle(tt.info); got != tt.want {
+				t.Errorf("paneShellIdle(%+v) = %v, want %v", tt.info, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWaitPaneReady(t *testing.T) {
+	idle := herdr.PaneProcessInfo{ShellPID: 4200, ForegroundProcessGroupID: 4200}
+	busy := herdr.PaneProcessInfo{ShellPID: 4200, ForegroundProcessGroupID: 4321}
+
+	t.Run("stops polling once the shell idles", func(t *testing.T) {
+		responses := []func() (herdr.PaneProcessInfo, error){
+			func() (herdr.PaneProcessInfo, error) { return herdr.PaneProcessInfo{}, errors.New("pane not found") },
+			func() (herdr.PaneProcessInfo, error) { return busy, nil },
+			func() (herdr.PaneProcessInfo, error) { return idle, nil },
+		}
+		polls := 0
+		waitPaneReady(context.Background(), func(context.Context) (herdr.PaneProcessInfo, error) {
+			resp := responses[min(polls, len(responses)-1)]
+			polls++
+			return resp()
+		}, 10, time.Millisecond)
+		if polls != 3 {
+			t.Errorf("polls = %d, want 3 (errored, busy, idle)", polls)
+		}
+	})
+
+	t.Run("gives up after the attempt bound", func(t *testing.T) {
+		polls := 0
+		waitPaneReady(context.Background(), func(context.Context) (herdr.PaneProcessInfo, error) {
+			polls++
+			return busy, nil
+		}, 5, time.Millisecond)
+		if polls != 5 {
+			t.Errorf("polls = %d, want 5", polls)
+		}
+	})
+
+	t.Run("returns on context cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		polls := 0
+		waitPaneReady(ctx, func(context.Context) (herdr.PaneProcessInfo, error) {
+			polls++
+			cancel()
+			return busy, nil
+		}, 100, time.Hour)
+		if polls != 1 {
+			t.Errorf("polls = %d, want 1 (cancelled after first poll)", polls)
+		}
+	})
 }
 
 func TestGist(t *testing.T) {

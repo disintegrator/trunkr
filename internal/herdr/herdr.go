@@ -179,6 +179,39 @@ func (c *Client) PaneSplit(ctx context.Context, targetPane, cwd string) (Pane, e
 	return out.Pane, nil
 }
 
+// PaneProcess is one process in a pane's foreground process group.
+type PaneProcess struct {
+	PID     int      `json:"pid"`
+	Name    string   `json:"name"`
+	Cmdline string   `json:"cmdline"`
+	Argv    []string `json:"argv"`
+	Cwd     string   `json:"cwd"`
+}
+
+// PaneProcessInfo is herdr's view of a pane's process state: the shell it
+// spawned and whatever currently holds the terminal foreground.
+type PaneProcessInfo struct {
+	PaneID                   string        `json:"pane_id"`
+	ShellPID                 int           `json:"shell_pid"`
+	ForegroundProcessGroupID int           `json:"foreground_process_group_id"`
+	ForegroundProcesses      []PaneProcess `json:"foreground_processes"`
+}
+
+// PaneProcessInfo returns the process state of a pane by id.
+func (c *Client) PaneProcessInfo(ctx context.Context, paneID string) (PaneProcessInfo, error) {
+	res, err := c.run(ctx, "pane", "process-info", "--pane", paneID)
+	if err != nil {
+		return PaneProcessInfo{}, err
+	}
+	var out struct {
+		ProcessInfo PaneProcessInfo `json:"process_info"`
+	}
+	if err := decode(res, &out, "pane process-info"); err != nil {
+		return PaneProcessInfo{}, err
+	}
+	return out.ProcessInfo, nil
+}
+
 // PaneRun runs argv in an existing pane's terminal.
 func (c *Client) PaneRun(ctx context.Context, paneID string, argv []string) error {
 	args := append([]string{"pane", "run", paneID}, argv...)

@@ -212,9 +212,30 @@ func (c *Client) PaneProcessInfo(ctx context.Context, paneID string) (PaneProces
 	return out.ProcessInfo, nil
 }
 
-// PaneRun runs argv in an existing pane's terminal.
+// shellQuoteSafe are the characters a token may consist of and still be
+// passed to the shell unquoted.
+const shellQuoteSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./:=@%+,"
+
+// shellQuote returns s as a single POSIX shell word. Plain tokens pass
+// through untouched; anything else is single-quoted, with each embedded
+// single quote escaped by closing the string, emitting \' and reopening.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsFunc(s, func(r rune) bool {
+		return !strings.ContainsRune(shellQuoteSafe, r)
+	}) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// PaneRun runs argv in an existing pane's terminal. herdr joins the command
+// args into one line typed into the pane's shell, so each argv item is
+// shell-quoted to keep its word boundaries (#32).
 func (c *Client) PaneRun(ctx context.Context, paneID string, argv []string) error {
-	args := append([]string{"pane", "run", paneID}, argv...)
+	args := []string{"pane", "run", paneID}
+	for _, a := range argv {
+		args = append(args, shellQuote(a))
+	}
 	_, err := c.run(ctx, args...)
 	return err
 }

@@ -161,16 +161,68 @@ func TestPaneProcessInfo(t *testing.T) {
 }
 
 func TestPaneRun(t *testing.T) {
-	logDir := t.TempDir()
-	c := fakeHerdr(t, logDir)
-	t.Setenv("FAKE_HERDR_STDOUT", `{"result":{"type":"ok"}}`)
-
-	if err := c.PaneRun(context.Background(), "w1:p9", []string{"claude", "--continue"}); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name string
+		argv []string
+		want []string
+	}{
+		{
+			"plain tokens pass through",
+			[]string{"claude", "--continue"},
+			[]string{"claude", "--continue"},
+		},
+		{
+			"multi-word item keeps its word boundaries",
+			[]string{"sh", "-c", "echo hi; exec sh"},
+			[]string{"sh", "-c", "'echo hi; exec sh'"},
+		},
+		{
+			"single quote in item is escaped",
+			[]string{"sh", "-c", "echo 'it works'"},
+			[]string{"sh", "-c", `'echo '\''it works'\'''`},
+		},
+		{
+			"empty item stays a word",
+			[]string{"env", ""},
+			[]string{"env", "''"},
+		},
 	}
-	want := []string{"pane", "run", "w1:p9", "claude", "--continue"}
-	if got := loggedArgs(t, logDir); !equal(got, want) {
-		t.Errorf("args = %v, want %v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logDir := t.TempDir()
+			c := fakeHerdr(t, logDir)
+			t.Setenv("FAKE_HERDR_STDOUT", `{"result":{"type":"ok"}}`)
+
+			if err := c.PaneRun(context.Background(), "w1:p9", tt.argv); err != nil {
+				t.Fatal(err)
+			}
+			want := append([]string{"pane", "run", "w1:p9"}, tt.want...)
+			if got := loggedArgs(t, logDir); !equal(got, want) {
+				t.Errorf("args = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"claude", "claude"},
+		{"--continue", "--continue"},
+		{"/repo/bin:x=y@%+,", "/repo/bin:x=y@%+,"},
+		{"", "''"},
+		{"echo hi; exec sh", "'echo hi; exec sh'"},
+		{"a b", "'a b'"},
+		{"it's", `'it'\''s'`},
+		{"'", `''\'''`},
+		{"$HOME", "'$HOME'"},
+		{"a\"b", `'a"b'`},
+	}
+	for _, tt := range tests {
+		if got := shellQuote(tt.in); got != tt.want {
+			t.Errorf("shellQuote(%q) = %s, want %s", tt.in, got, tt.want)
+		}
 	}
 }
 

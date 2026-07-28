@@ -23,6 +23,9 @@ archives:
       - README.md
       - herdr-plugin.toml
 
-# Release notes come from Bumper (--release-notes in the workflow).
+# Release notes come from Bumper (--release-notes in the workflow), which
+# replaces git-log changelog generation. Do NOT set disable: true here —
+# that skips goreleaser's changelog pipe entirely, including loading the
+# --release-notes file, and publishes an empty release body.
 changelog:
-  disable: true
+  disable: false

@@ -64,6 +64,13 @@ func actionCommand() *cli.Command {
 					return openRunner(ctx, "pr", "", cmd.Args().First())
 				},
 			},
+			{
+				Name:  "picker",
+				Usage: "open the interactive worktree picker overlay",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return openPicker(ctx)
+				},
+			},
 		},
 	}
 }

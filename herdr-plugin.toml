@@ -51,11 +51,25 @@ contexts = ["global", "workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "create"]
 
 [[actions]]
+id = "picker"
+title = "trunkr: picker"
+description = "Browse worktrees in an overlay: switch, open in tab/workspace/split, create, PR checkout."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "picker"]
+
+[[actions]]
 id = "pr-checkout"
 title = "trunkr: checkout PR"
 description = "Check out a pull request into a worktree (wt switch pr:N) and open a pane in it."
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "pr"]
+
+[[panes]]
+id = "picker"
+title = "trunkr picker"
+description = "Interactive worktree picker: rows show branch, panes, agent status, and git state."
+placement = "overlay"
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" picker"]
 
 [[panes]]
 id = "runner"

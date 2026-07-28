@@ -105,6 +105,64 @@ func (c *Client) SwitchStreaming(ctx context.Context, dir, ref string, opts Swit
 	return parseSwitchResult(stdout.Bytes())
 }
 
+// MergeResult is wt merge --format json output.
+type MergeResult struct {
+	// Branch is the branch that was merged (the worktree's own branch — wt
+	// merge merges the current branch into the target).
+	Branch string `json:"branch"`
+	// Target is the branch merged into, the default branch unless overridden.
+	Target    string `json:"target"`
+	Committed bool   `json:"committed"`
+	Squashed  bool   `json:"squashed"`
+	Rebased   bool   `json:"rebased"`
+	Removed   bool   `json:"removed"`
+}
+
+// MergeOptions are the wt merge flags trunkr uses.
+type MergeOptions struct {
+	// NoRemove passes --no-remove, keeping the worktree so trunkr can run its
+	// controlled teardown (close panes, then remove) instead of wt's
+	// background removal.
+	NoRemove bool
+	// ExtraArgs are the user's [merge] extra_args, appended to every wt merge
+	// invocation.
+	ExtraArgs []string
+}
+
+// mergeArgs builds the wt merge argv. Extra args come before trunkr's own
+// flags so the trunkr contract (--no-remove, --format json) wins if both name
+// the same flag.
+func mergeArgs(opts MergeOptions) []string {
+	args := []string{"merge"}
+	args = append(args, opts.ExtraArgs...)
+	if opts.NoRemove {
+		args = append(args, "--no-remove")
+	}
+	args = append(args, "--format", "json")
+	return args
+}
+
+// MergeStreaming runs wt merge in the worktree at dir — wt merge merges the
+// *current* branch into the target, so dir selects what gets merged. Stdin
+// and stderr pass through so hook-approval prompts work interactively; stdout
+// (the JSON result) is captured and parsed.
+func (c *Client) MergeStreaming(ctx context.Context, dir string, opts MergeOptions, stdin io.Reader, stderr io.Writer) (MergeResult, error) {
+	cmd, err := c.Command(ctx, dir, mergeArgs(opts)...)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	var stdout bytes.Buffer
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return MergeResult{}, fmt.Errorf("wt merge: %w", err)
+	}
+	var res MergeResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		return MergeResult{}, fmt.Errorf("wt merge: parsing JSON output: %w", err)
+	}
+	return res, nil
+}
+
 // RemoveResult is one entry of wt remove --format json output.
 type RemoveResult struct {
 	Branch        string `json:"branch"`
@@ -127,9 +185,7 @@ type RemoveOptions struct {
 	NoHooks bool
 }
 
-// Remove runs wt remove for the given branches (empty means the current
-// worktree) and returns what was removed.
-func (c *Client) Remove(ctx context.Context, dir string, branches []string, opts RemoveOptions) ([]RemoveResult, error) {
+func removeArgs(branches []string, opts RemoveOptions) []string {
 	args := []string{"remove"}
 	args = append(args, branches...)
 	args = append(args, "--format", "json")
@@ -145,13 +201,39 @@ func (c *Client) Remove(ctx context.Context, dir string, branches []string, opts
 	if opts.NoHooks {
 		args = append(args, "--no-hooks")
 	}
-	out, err := c.run(ctx, dir, args...)
-	if err != nil {
-		return nil, err
-	}
+	return args
+}
+
+func parseRemoveResults(out []byte) ([]RemoveResult, error) {
 	var res []RemoveResult
 	if err := json.Unmarshal(out, &res); err != nil {
 		return nil, fmt.Errorf("wt remove: parsing JSON output: %w", err)
 	}
 	return res, nil
+}
+
+// Remove runs wt remove for the given branches (empty means the current
+// worktree) and returns what was removed.
+func (c *Client) Remove(ctx context.Context, dir string, branches []string, opts RemoveOptions) ([]RemoveResult, error) {
+	out, err := c.run(ctx, dir, removeArgs(branches, opts)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseRemoveResults(out)
+}
+
+// RemoveStreaming is the runner-surface variant of Remove: stdin and stderr
+// pass through so remove-hook approval prompts work interactively, while
+// stdout (the JSON result) is captured and parsed.
+func (c *Client) RemoveStreaming(ctx context.Context, dir string, branches []string, opts RemoveOptions, stdin io.Reader, stderr io.Writer) ([]RemoveResult, error) {
+	cmd, err := c.Command(ctx, dir, removeArgs(branches, opts)...)
+	if err != nil {
+		return nil, err
+	}
+	var stdout bytes.Buffer
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("wt remove: %w", err)
+	}
+	return parseRemoveResults(stdout.Bytes())
 }

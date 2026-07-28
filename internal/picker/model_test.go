@@ -240,15 +240,69 @@ func TestActionDone(t *testing.T) {
 	}
 }
 
-func TestMergeDestroyStubbed(t *testing.T) {
+func TestDestroyStubbed(t *testing.T) {
 	h := newHarness(rows3())
-	h.press(keyRunes("m"))
-	if len(h.actions) != 0 || !strings.Contains(h.model.status, "merge") {
-		t.Fatalf("m should only set a status: actions=%+v status=%q", h.actions, h.model.status)
-	}
 	h.press(keyRunes("d"))
 	if len(h.actions) != 0 || !strings.Contains(h.model.status, "destroy") {
 		t.Fatalf("d should only set a status: actions=%+v status=%q", h.actions, h.model.status)
+	}
+}
+
+func TestMergeConfirmFlow(t *testing.T) {
+	h := newHarness(rows3())
+	h.press(keyRunes("j")) // feat/auth, 2 panes
+	h.press(keyRunes("m"))
+	if h.model.mode != modeConfirm {
+		t.Fatal("m should enter confirm mode")
+	}
+	if !strings.Contains(h.model.prompt, "feat/auth") || !strings.Contains(h.model.prompt, "2 pane(s)") {
+		t.Fatalf("prompt = %q, want branch and pane count", h.model.prompt)
+	}
+	h.press(keyRunes("y"))
+	want := Action{Op: "merge", Ref: "feat/auth"}
+	if len(h.actions) != 1 || h.actions[0] != want {
+		t.Fatalf("actions = %+v, want [%+v]", h.actions, want)
+	}
+	if h.model.mode != modeList {
+		t.Fatal("confirm should return to list mode")
+	}
+}
+
+func TestMergeConfirmCancels(t *testing.T) {
+	for _, key := range []tea.KeyMsg{keyRunes("n"), {Type: tea.KeyEsc}, keyRunes("x")} {
+		h := newHarness(rows3())
+		h.press(keyRunes("j"))
+		h.press(keyRunes("m"))
+		h.press(key)
+		if len(h.actions) != 0 {
+			t.Fatalf("key %v should cancel, emitted %+v", key, h.actions)
+		}
+		if h.model.mode != modeList || h.model.status != "cancelled" {
+			t.Fatalf("key %v should cancel back to list mode: mode=%d status=%q", key, h.model.mode, h.model.status)
+		}
+	}
+}
+
+func TestMergeRefusesTrunk(t *testing.T) {
+	h := newHarness(rows3()) // cursor on main (trunk)
+	h.press(keyRunes("m"))
+	if h.model.mode != modeList || len(h.actions) != 0 {
+		t.Fatal("trunk row must not enter merge confirm")
+	}
+	if !strings.Contains(h.model.status, "trunk") {
+		t.Fatalf("status = %q, want trunk refusal", h.model.status)
+	}
+}
+
+func TestMergeSuccessRefreshesWithoutQuit(t *testing.T) {
+	h := newHarness(rows3())
+	cmd := h.press(ActionDoneMsg{Quit: false}) // merge success: picker stays
+	if cmd == nil {
+		t.Fatal("merge success should trigger a refresh")
+	}
+	cmd()
+	if h.refreshs != 1 {
+		t.Fatalf("refreshs = %d, want 1", h.refreshs)
 	}
 }
 

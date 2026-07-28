@@ -39,6 +39,7 @@ const (
 	modeList mode = iota
 	modeFilter
 	modeInput
+	modeConfirm
 )
 
 // inputKind names what the input prompt collects.
@@ -49,8 +50,8 @@ const (
 	inputPR
 )
 
-// bindableActions are the [picker.keys] names this slice acts on, plus the
-// two whose flows land with the merge and destroy tickets.
+// bindableActions are the [picker.keys] names this slice acts on, plus
+// destroy, whose flow lands with its own ticket.
 var actionOrder = []string{"tab", "workspace", "split", "create", "pr", "merge", "destroy"}
 
 // Model is the picker's Bubble Tea model. Exec and Refresh are injected so
@@ -73,6 +74,9 @@ type Model struct {
 	inputKind inputKind
 	status    string
 	keyAction map[string]string // key → action name, from [picker.keys]
+
+	// confirmAction is the destructive action pending its inline y/N answer.
+	confirmAction Action
 }
 
 // New builds a picker model. keys is the resolved [picker.keys] map
@@ -171,6 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateFilter(msg)
 		case modeInput:
 			return m.updateInput(msg)
+		case modeConfirm:
+			return m.updateConfirm(msg)
 		default:
 			return m.updateList(msg)
 		}
@@ -222,6 +228,19 @@ func (m Model) updateInput(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateConfirm answers the inline y/N confirm: y executes the pending
+// action, anything else cancels.
+func (m Model) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	action := m.confirmAction
+	m.mode, m.prompt, m.confirmAction = modeList, "", Action{}
+	if key.Type == tea.KeyRunes && strings.EqualFold(string(key.Runes), "y") {
+		m.status = ""
+		return m, m.Exec(action)
+	}
+	m.status = "cancelled"
+	return m, nil
+}
+
 func (m Model) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "q", "esc", "ctrl+c":
@@ -259,7 +278,15 @@ func (m Model) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pr":
 		m.mode, m.inputKind, m.prompt = modeInput, inputPR, "PR number or URL: "
 	case "merge":
-		m.status = "merge arrives with the merge flow — not in this trunkr version yet"
+		if row, ok := m.current(); ok {
+			if row.IsTrunk {
+				m.status = "cannot merge the trunk worktree"
+				return m, nil
+			}
+			m.mode = modeConfirm
+			m.confirmAction = Action{Op: "merge", Ref: row.Branch}
+			m.prompt = fmt.Sprintf("merge %s into trunk? commits dirty changes, closes %d pane(s), removes the worktree [y/N] ", row.Branch, row.Panes)
+		}
 	case "destroy":
 		m.status = "destroy arrives with the destroy flow — not in this trunkr version yet"
 	}
@@ -271,12 +298,12 @@ func (m Model) helpLine() string {
 	parts := []string{"enter switch"}
 	labels := map[string]string{
 		"tab": "tab", "workspace": "workspace", "split": "split",
-		"create": "create", "pr": "pr",
+		"create": "create", "pr": "pr", "merge": "merge",
 	}
 	for _, action := range actionOrder {
 		label, active := labels[action]
 		if !active {
-			continue // merge/destroy: hidden until their flows land
+			continue // destroy: hidden until its flow lands
 		}
 		if key := m.keyFor(action); key != "" {
 			parts = append(parts, fmt.Sprintf("%s %s", key, label))

@@ -94,6 +94,18 @@ func runPicker(ctx context.Context) error {
 		return fmt.Errorf("resolving own binary: %w", err)
 	}
 	execAction := func(a picker.Action) tea.Cmd {
+		// Destroy is the silent tier: no runner surface. The picker's inline
+		// confirm already ran, so just tear down in-process — the row
+		// disappearing on refresh is the success signal.
+		if a.Op == "destroy" {
+			return func() tea.Msg {
+				err := destroyWorktree(ctx, hc, wtc, dir, a.Ref)
+				if err != nil {
+					hc.Notify(ctx, "trunkr: destroy failed", gist(err.Error()))
+				}
+				return picker.ActionDoneMsg{Err: err, Quit: false}
+			}
+		}
 		child := exec.CommandContext(ctx, self, "runner")
 		// The picker's inline y/N confirm already ran for merge, so the
 		// runner must not re-confirm.

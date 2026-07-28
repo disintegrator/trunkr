@@ -65,6 +65,8 @@ func opTitle(op string) string {
 		return "PR checkout"
 	case "merge":
 		return "merge"
+	case "destroy":
+		return "destroy"
 	default:
 		return "switch"
 	}
@@ -95,8 +97,11 @@ func runRunner(ctx context.Context) error {
 		return fail(err)
 	}
 
-	if req.Op == "merge" {
+	switch req.Op {
+	case "merge":
 		return runMerge(ctx, hc, wtc, cfg, req, fail)
+	case "destroy":
+		return runDestroy(ctx, hc, wtc, req)
 	}
 
 	ref := req.Ref
@@ -162,19 +167,12 @@ func runMerge(ctx context.Context, hc *herdr.Client, wtc *wt.Client, cfg config.
 	if err != nil {
 		return fail(err)
 	}
-	target, err := findWorktree(list, req.Ref, req.Dir)
+	target, err := findWorktree(list, req.Ref, req.Dir, "merge")
 	if err != nil {
 		return fail(err)
 	}
 
-	paths := make([]string, 0, len(list.Worktrees))
-	trunkPath := ""
-	for _, w := range list.Worktrees {
-		paths = append(paths, w.Path)
-		if w.IsMain {
-			trunkPath = w.Path
-		}
-	}
+	paths, trunkPath := worktreePaths(list)
 	if trunkPath == "" {
 		return fail(errors.New("wt list reports no main worktree"))
 	}
@@ -237,11 +235,102 @@ func runMerge(ctx context.Context, hc *herdr.Client, wtc *wt.Client, cfg config.
 	return nil
 }
 
-// findWorktree resolves which worktree a merge targets: by branch when ref is
-// set (the picker names the row), otherwise the worktree containing dir (the
-// standalone "merge current worktree" action). The trunk worktree is refused —
-// there is nothing to merge it into.
-func findWorktree(list wt.ListResult, ref, dir string) (wt.Worktree, error) {
+// runDestroy is the standalone destroy action's popup: it exists only to ask
+// the y/N confirm the headless action can't. The teardown itself is the
+// silent tier — no streamed output, no hold-open; failures notify only.
+func runDestroy(ctx context.Context, hc *herdr.Client, wtc *wt.Client, req runnerRequest) error {
+	fail := func(err error) error {
+		hc.Notify(ctx, "trunkr: destroy failed", gist(err.Error()))
+		return err
+	}
+	list, err := wtc.List(ctx, req.Dir)
+	if err != nil {
+		return fail(err)
+	}
+	target, err := findWorktree(list, req.Ref, req.Dir, "destroy")
+	if err != nil {
+		return fail(err)
+	}
+	paths, _ := worktreePaths(list)
+	panes, err := hc.PaneList(ctx)
+	if err != nil {
+		return fail(err)
+	}
+	live := len(mapping.PanesIn(panes, paths, target.Path))
+
+	fmt.Fprintf(os.Stderr, "destroy %s: DISCARDS uncommitted changes, closes %d pane(s), removes the worktree\n", target.Branch, live)
+	answer, err := promptLine("proceed? [y/N]")
+	if err != nil {
+		return fail(err)
+	}
+	if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
+		fmt.Fprintln(os.Stderr, "cancelled")
+		return nil
+	}
+	if err := destroyWorktree(ctx, hc, wtc, req.Dir, target.Branch); err != nil {
+		return fail(err)
+	}
+	return nil
+}
+
+// destroyWorktree is the silent-tier teardown shared by the picker's d key
+// and the standalone destroy action: close the worktree's panes (consent came
+// from the caller's confirm), then wt remove -f. Always -f so a dirty tree
+// can't fail the silent run; never -D — branch deletion stays on wt's
+// merged-only default, so an unmerged branch surviving is the recovery net.
+func destroyWorktree(ctx context.Context, hc *herdr.Client, wtc *wt.Client, dir, ref string) error {
+	list, err := wtc.List(ctx, dir)
+	if err != nil {
+		return err
+	}
+	target, err := findWorktree(list, ref, dir, "destroy")
+	if err != nil {
+		return err
+	}
+	paths, trunkPath := worktreePaths(list)
+	if trunkPath == "" {
+		return errors.New("wt list reports no main worktree")
+	}
+	panes, err := hc.PaneList(ctx)
+	if err != nil {
+		return err
+	}
+	// The pane hosting this process (the picker overlay) is spared — closing
+	// it would kill the teardown mid-flight.
+	selfPane := os.Getenv("HERDR_PANE_ID")
+	for _, p := range mapping.PanesIn(panes, paths, target.Path) {
+		if p.PaneID == selfPane {
+			continue
+		}
+		if err := hc.PaneClose(ctx, p.PaneID); err != nil {
+			return fmt.Errorf("closing pane %s: %w (worktree kept)", p.PaneID, err)
+		}
+	}
+	// Remove from the trunk worktree: dir may be inside the deleted path.
+	if _, err := wtc.Remove(ctx, trunkPath, []string{target.Branch}, wt.RemoveOptions{Force: true}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// worktreePaths collects every worktree path plus the trunk worktree's, the
+// safe cwd for operations that delete other worktrees.
+func worktreePaths(list wt.ListResult) (paths []string, trunkPath string) {
+	paths = make([]string, 0, len(list.Worktrees))
+	for _, w := range list.Worktrees {
+		paths = append(paths, w.Path)
+		if w.IsMain {
+			trunkPath = w.Path
+		}
+	}
+	return paths, trunkPath
+}
+
+// findWorktree resolves which worktree an op (merge, destroy) targets: by
+// branch when ref is set (the picker names the row), otherwise the worktree
+// containing dir (the standalone "current worktree" actions). The trunk
+// worktree is refused — it is not a disposable worktree.
+func findWorktree(list wt.ListResult, ref, dir, op string) (wt.Worktree, error) {
 	var target wt.Worktree
 	found := false
 	if ref != "" {
@@ -267,14 +356,14 @@ func findWorktree(list wt.ListResult, ref, dir string) (wt.Worktree, error) {
 			}
 		}
 		if !found {
-			return wt.Worktree{}, fmt.Errorf("%s is not inside a worktree — invoke merge from a worktree pane or pick a branch", dir)
+			return wt.Worktree{}, fmt.Errorf("%s is not inside a worktree — invoke %s from a worktree pane or pick a branch", dir, op)
 		}
 	}
 	if target.IsMain {
-		return wt.Worktree{}, errors.New("refusing to merge the trunk worktree — merge runs from a feature worktree")
+		return wt.Worktree{}, fmt.Errorf("refusing to %s the trunk worktree", op)
 	}
 	if target.Branch == "" {
-		return wt.Worktree{}, fmt.Errorf("worktree at %s has no branch (detached HEAD) — nothing to merge", target.Path)
+		return wt.Worktree{}, fmt.Errorf("worktree at %s has no branch (detached HEAD) — trunkr addresses worktrees by branch", target.Path)
 	}
 	return target, nil
 }

@@ -51,6 +51,27 @@ contexts = ["global", "workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "create"]
 
 [[actions]]
+id = "picker"
+title = "trunkr: picker"
+description = "Browse worktrees in an overlay: switch, open in tab/workspace/split, create, PR checkout."
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "picker"]
+
+[[actions]]
+id = "merge"
+title = "trunkr: merge worktree"
+description = "Merge the current worktree's branch into trunk (wt merge), close its panes, and remove the worktree."
+contexts = ["tab", "pane"]
+command = ["bin/trunkr", "action", "merge"]
+
+[[actions]]
+id = "destroy"
+title = "trunkr: destroy worktree"
+description = "Destroy the current worktree: discard uncommitted changes, close its panes, and remove it (wt remove -f)."
+contexts = ["tab", "pane"]
+command = ["bin/trunkr", "action", "destroy"]
+
+[[actions]]
 id = "pr-checkout"
 title = "trunkr: checkout PR"
 description = "Check out a pull request into a worktree (wt switch pr:N) and open a pane in it."
@@ -58,9 +79,16 @@ contexts = ["global", "workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "pr"]
 
 [[panes]]
+id = "picker"
+title = "trunkr picker"
+description = "Interactive worktree picker: rows show branch, panes, agent status, and git state."
+placement = "overlay"
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" picker"]
+
+[[panes]]
 id = "runner"
 title = "trunkr runner"
-description = "Streams wt output for switch/create/PR checkout; auto-closes on success, holds open on failure."
+description = "Streams wt output for switch/create/PR checkout/merge and asks the destroy confirm; auto-closes on success, holds open on failure."
 # popup placement must come from the manifest: the 0.7.5 CLI --placement flag
 # cannot request popup.
 placement = "popup"

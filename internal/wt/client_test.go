@@ -222,6 +222,67 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestMergeStreaming(t *testing.T) {
+	logDir := t.TempDir()
+	c := &Client{Path: fakeWT(t, logDir)}
+	stdoutFixture(t, `{"branch":"feat-a","target":"main","committed":true,"squashed":true,"rebased":true,"removed":false}`)
+	t.Setenv("FAKE_WT_STDERR", "squashing...")
+
+	var stderr strings.Builder
+	opts := MergeOptions{NoRemove: true, ExtraArgs: []string{"--no-ff"}}
+	got, err := c.MergeStreaming(context.Background(), t.TempDir(), opts, strings.NewReader(""), &stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := MergeResult{Branch: "feat-a", Target: "main", Committed: true, Squashed: true, Rebased: true}
+	if got != want {
+		t.Errorf("result = %+v, want %+v", got, want)
+	}
+	if !strings.Contains(stderr.String(), "squashing...") {
+		t.Errorf("stderr writer did not receive wt's stream: %q", stderr.String())
+	}
+	// Extra args come before trunkr's own flags so the trunkr contract wins.
+	wantArgs := []string{"merge", "--no-ff", "--no-remove", "--format", "json"}
+	if _, args := loggedCall(t, logDir); !equalStrings(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestMergeStreamingFailure(t *testing.T) {
+	logDir := t.TempDir()
+	c := &Client{Path: fakeWT(t, logDir)}
+	t.Setenv("FAKE_WT_EXIT", "1")
+	t.Setenv("FAKE_WT_STDERR", "rebase conflict in main.go")
+
+	var stderr strings.Builder
+	_, err := c.MergeStreaming(context.Background(), t.TempDir(), MergeOptions{NoRemove: true}, strings.NewReader(""), &stderr)
+	if err == nil {
+		t.Fatal("want error on nonzero exit")
+	}
+	if !strings.Contains(stderr.String(), "rebase conflict in main.go") {
+		t.Errorf("failure output should have streamed to the writer: %q", stderr.String())
+	}
+}
+
+func TestRemoveStreaming(t *testing.T) {
+	logDir := t.TempDir()
+	c := &Client{Path: fakeWT(t, logDir)}
+	stdoutFixture(t, `[{"branch":"feat-a","branch_deleted":true,"path":"/home/user/repo.feat-a"}]`)
+
+	var stderr strings.Builder
+	got, err := c.RemoveStreaming(context.Background(), t.TempDir(), []string{"feat-a"}, RemoveOptions{}, strings.NewReader(""), &stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Branch != "feat-a" || !got[0].BranchDeleted {
+		t.Errorf("result = %+v, want feat-a with branch deleted", got)
+	}
+	wantArgs := []string{"remove", "feat-a", "--format", "json"}
+	if _, args := loggedCall(t, logDir); !equalStrings(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
 func TestListPinsSchema2(t *testing.T) {
 	logDir := t.TempDir()
 	c := &Client{Path: fakeWT(t, logDir)}

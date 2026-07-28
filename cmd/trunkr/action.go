@@ -15,12 +15,13 @@ import (
 // popup they open. Actions are the only writer; the runner is the only
 // reader. The picker pane will reuse the same contract.
 const (
-	envOp          = "TRUNKR_OP"           // switch | create | pr
+	envOp          = "TRUNKR_OP"           // switch | create | pr | merge | destroy
 	envMode        = "TRUNKR_MODE"         // container override: tab | workspace | split (generic when unset)
 	envRef         = "TRUNKR_REF"          // prefilled ref; the runner prompts when unset
 	envDir         = "TRUNKR_DIR"          // target repo/workspace directory
 	envWorkspaceID = "TRUNKR_WORKSPACE_ID" // workspace the action was invoked from
 	envPaneID      = "TRUNKR_PANE_ID"      // pane the action was invoked from (split target)
+	envConfirmed   = "TRUNKR_CONFIRMED"    // "1" when the picker's inline confirm already ran
 )
 
 // runnerEntrypoint is the [[panes]] id of the popup runner surface.
@@ -62,6 +63,29 @@ func actionCommand() *cli.Command {
 				ArgsUsage: "[number|pr:N|url]",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return openRunner(ctx, "pr", "", cmd.Args().First())
+				},
+			},
+			{
+				Name:      "merge",
+				Usage:     "merge a worktree's branch into trunk, close its panes, and remove it",
+				ArgsUsage: "[branch]",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return openRunner(ctx, "merge", "", cmd.Args().First())
+				},
+			},
+			{
+				Name:      "destroy",
+				Usage:     "destroy a worktree: discard changes, close its panes, remove it",
+				ArgsUsage: "[branch]",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return openRunner(ctx, "destroy", "", cmd.Args().First())
+				},
+			},
+			{
+				Name:  "picker",
+				Usage: "open the interactive worktree picker overlay",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return openPicker(ctx)
 				},
 			},
 		},

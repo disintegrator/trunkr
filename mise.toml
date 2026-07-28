@@ -4,3 +4,4 @@ pin = true
 [tools]
 "github:disintegrator/bumper" = "0.1.0"
 go = "1.26.5"
+hk = "1.53.0"

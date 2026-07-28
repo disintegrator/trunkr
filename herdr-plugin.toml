@@ -5,6 +5,14 @@ min_herdr_version = "0.7.5"
 description = "worktrunk worktrees inside herdr: switch, picker, merge, destroy, PR checkout."
 platforms = ["linux", "macos"]
 
+# herdr installs are full repo checkouts and cannot exclude files, so the dev
+# mise.toml ships untrusted and breaks mise-shimmed tools run from the plugin
+# root (#34). Delete it before anything else runs — including go below, which
+# may itself be a mise shim. `plugin link` skips build commands, so local
+# working trees keep their mise.toml.
+[[build]]
+command = ["rm", "-f", "mise.toml"]
+
 [[build]]
 command = ["go", "build", "-o", "bin/trunkr", "./cmd/trunkr"]
 

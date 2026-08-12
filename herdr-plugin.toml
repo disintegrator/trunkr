@@ -1,6 +1,6 @@
 id = "disintegrator.trunkr"
 name = "trunkr"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.8.0"
 description = "Use Worktrunk for Herdr worktree creation, switching, and removal."
 platforms = ["linux", "macos"]

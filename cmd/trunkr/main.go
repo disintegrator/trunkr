@@ -68,8 +68,11 @@ func run(args []string) error {
 	if len(args) == 3 && args[0] == "open-after-popup" {
 		return openAfterPopup(args[1], args[2])
 	}
+	if len(args) == 4 && args[0] == "return-after-popup" {
+		return returnAfterPopup(args[1], args[2], args[3])
+	}
 	if len(args) != 2 && !(len(args) == 1 && args[0] == "runner") {
-		return errors.New("usage: trunkr action <create|open|remove> | runner | open-after-popup <cwd> <path>")
+		return errors.New("usage: trunkr action <create|open|merge|remove> | runner")
 	}
 
 	if args[0] == "action" {
@@ -93,6 +96,8 @@ func run(args []string) error {
 		return createWorktree(cwd, sourceCWD)
 	case "open":
 		return openWorktree(cwd, sourceCWD)
+	case "merge":
+		return mergeWorktree(cwd, workspaceID)
 	case "remove":
 		return removeWorktree(cwd, workspaceID)
 	default:
@@ -101,7 +106,7 @@ func run(args []string) error {
 }
 
 func openRunner(action string) error {
-	if action != "create" && action != "open" && action != "remove" {
+	if action != "create" && action != "open" && action != "merge" && action != "remove" {
 		return fmt.Errorf("unknown action %q", action)
 	}
 
@@ -197,6 +202,14 @@ func openWorktree(cwd, sourceCWD string) error {
 }
 
 func handoffOpen(cwd, path string) error {
+	return handoffAfterPopup(cwd, "open.log", "open-after-popup", cwd, path)
+}
+
+func handoffReturn(repoRoot, checkout, workspaceID string) error {
+	return handoffAfterPopup(repoRoot, "return.log", "return-after-popup", repoRoot, checkout, workspaceID)
+}
+
+func handoffAfterPopup(cwd, logName string, args ...string) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate trunkr executable: %w", err)
@@ -211,7 +224,7 @@ func handoffOpen(cwd, path string) error {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			return fmt.Errorf("create plugin state directory: %w", err)
 		}
-		logFile, err := os.OpenFile(filepath.Join(stateDir, "open.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		logFile, err := os.OpenFile(filepath.Join(stateDir, logName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return fmt.Errorf("open worktree handoff log: %w", err)
 		}
@@ -223,7 +236,8 @@ func handoffOpen(cwd, path string) error {
 		return fmt.Errorf("create worktree handoff barrier: %w", err)
 	}
 
-	cmd := exec.Command(executable, "open-after-popup", cwd, path)
+	cmd := exec.Command(executable, args...)
+	cmd.Dir = cwd
 	cmd.Stdin = devNull
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -244,6 +258,32 @@ func handoffOpen(cwd, path string) error {
 }
 
 func openAfterPopup(cwd, path string) error {
+	if err := waitForRunner(); err != nil {
+		return err
+	}
+	if err := closePopup(); err != nil {
+		return err
+	}
+	return runHerdr("worktree", "open", "--cwd", cwd, "--path", path, "--focus")
+}
+
+func returnAfterPopup(repoRoot, checkout, workspaceID string) error {
+	if err := waitForRunner(); err != nil {
+		return err
+	}
+	if err := closePopup(); err != nil {
+		return err
+	}
+
+	openErr := runHerdr("worktree", "open", "--cwd", repoRoot, "--path", repoRoot, "--focus")
+	closeErr := runHerdr("workspace", "close", workspaceID)
+	if closeErr != nil || openErr != nil {
+		return fmt.Errorf("return from removed worktree %s: %w", checkout, errors.Join(openErr, closeErr))
+	}
+	return nil
+}
+
+func waitForRunner() error {
 	if barrierFD := os.Getenv("HERDR_TRUNKR_BARRIER_FD"); barrierFD != "" {
 		fd, err := strconv.Atoi(barrierFD)
 		if err != nil {
@@ -260,11 +300,7 @@ func openAfterPopup(cwd, path string) error {
 			return fmt.Errorf("close worktree handoff barrier: %w", err)
 		}
 	}
-
-	if err := closePopup(); err != nil {
-		return err
-	}
-	return runHerdr("worktree", "open", "--cwd", cwd, "--path", path, "--focus")
+	return nil
 }
 
 func closePopup() error {
@@ -369,6 +405,10 @@ func removeWorktree(cwd, workspaceID string) error {
 	if workspaceID == "" {
 		return errors.New("remove requires a Herdr workspace")
 	}
+	checkout, repoRoot, err := destructiveWorktreeRoots(cwd)
+	if err != nil {
+		return err
+	}
 	answer, err := prompt(bufio.NewReader(os.Stdin), "Remove this worktree? [y/N]")
 	if err != nil {
 		return err
@@ -378,23 +418,118 @@ func removeWorktree(cwd, workspaceID string) error {
 		return nil
 	}
 
-	primaryCheckout, err := commandOutput("git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return err
-	}
-	primaryCheckout = filepath.Dir(primaryCheckout)
-
-	cmd := exec.Command("wt", "-C", cwd, "remove", "--foreground", "--format=json", cwd)
+	cmd := exec.Command("wt", "-C", checkout, "remove", "--foreground", "--format=json", checkout)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("remove with Worktrunk: %w", err)
 	}
-	if err := os.Chdir(primaryCheckout); err != nil {
+	if err := os.Chdir(repoRoot); err != nil {
 		return fmt.Errorf("move to primary checkout after removal: %w", err)
 	}
-	return runHerdr("workspace", "close", workspaceID)
+	return finishRemovedWorktree(repoRoot, checkout, workspaceID)
+}
+
+func mergeWorktree(cwd, workspaceID string) error {
+	if workspaceID == "" {
+		return errors.New("merge requires a Herdr workspace")
+	}
+	checkout, repoRoot, err := destructiveWorktreeRoots(cwd)
+	if err != nil {
+		return err
+	}
+	answer, err := prompt(bufio.NewReader(os.Stdin), "Merge this worktree into the default branch? [y/N]")
+	if err != nil {
+		return err
+	}
+	if answer != "y" && answer != "Y" {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	cmd := exec.Command("wt", "-C", checkout, "merge", "--format=json")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("merge with Worktrunk: %w", err)
+	}
+	if err := os.Chdir(repoRoot); err != nil {
+		return fmt.Errorf("move to primary checkout after merge: %w", err)
+	}
+	return finishRemovedWorktree(repoRoot, checkout, workspaceID)
+}
+
+func destructiveWorktreeRoots(cwd string) (checkout, repoRoot string, err error) {
+	checkout, err = checkoutRoot(cwd)
+	if err != nil {
+		return "", "", err
+	}
+	commonDir, err := commandOutput("git", "-C", checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", "", err
+	}
+	repoRoot, err = checkoutRoot(filepath.Dir(commonDir))
+	if err != nil {
+		return "", "", err
+	}
+	if samePath(checkout, repoRoot) {
+		return "", "", errors.New("the primary checkout cannot be removed or merged")
+	}
+	return checkout, repoRoot, nil
+}
+
+func checkoutRoot(cwd string) (string, error) {
+	root, err := commandOutput("git", "-C", cwd, "rev-parse", "--path-format=absolute", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve checkout root: %w", err)
+	}
+	return filepath.Clean(resolved), nil
+}
+
+func finishRemovedWorktree(repoRoot, checkout, workspaceID string) error {
+	registered, err := isRegisteredWorktree(repoRoot, checkout)
+	if err != nil {
+		return err
+	}
+	if registered {
+		return errors.New("Worktrunk kept the checkout; leaving its Herdr workspace open")
+	}
+	return handoffReturn(repoRoot, checkout, workspaceID)
+}
+
+func isRegisteredWorktree(repoRoot, checkout string) (bool, error) {
+	cmd := exec.Command("git", "-C", repoRoot, "worktree", "list", "--porcelain", "-z")
+	cmd.Stderr = os.Stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("list Git worktrees: %w", err)
+	}
+	for _, path := range worktreePaths(output) {
+		if samePath(path, checkout) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func worktreePaths(output []byte) []string {
+	var paths []string
+	for field := range bytes.SplitSeq(output, []byte{0}) {
+		if path, ok := bytes.CutPrefix(field, []byte("worktree ")); ok {
+			paths = append(paths, string(path))
+		}
+	}
+	return paths
+}
+
+func samePath(left, right string) bool {
+	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 func listWorktrees(cwd string) ([]worktree, error) {

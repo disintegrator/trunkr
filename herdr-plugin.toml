@@ -2,7 +2,7 @@ id = "disintegrator.trunkr"
 name = "trunkr"
 version = "0.1.1"
 min_herdr_version = "0.8.0"
-description = "Use Worktrunk for Herdr worktree creation, switching, and removal."
+description = "Use Worktrunk for Herdr worktree creation, switching, merging, and removal."
 platforms = ["linux", "macos"]
 
 # GitHub installs are full repository checkouts. Remove the untrusted
@@ -29,6 +29,13 @@ title = "Worktree: open"
 description = "Open a Worktrunk worktree as a Herdr workspace."
 contexts = ["workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "open"]
+
+[[actions]]
+id = "merge"
+title = "Worktree: merge"
+description = "Merge the current worktree with Worktrunk."
+contexts = ["workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "merge"]
 
 [[actions]]
 id = "remove"

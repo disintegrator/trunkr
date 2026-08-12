@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -87,5 +90,89 @@ func TestWorktreeLabelShowsDefaultState(t *testing.T) {
 	})
 	if label != "○ feature                      /tmp/project.feature" {
 		t.Fatalf("unexpected label %q", label)
+	}
+}
+
+func TestWorktreePathsParsesPorcelainOutput(t *testing.T) {
+	output := []byte("worktree /tmp/project\x00HEAD abc\x00branch refs/heads/main\x00\x00worktree /tmp/project.feature\x00HEAD def\x00branch refs/heads/feature\x00\x00")
+	paths := worktreePaths(output)
+	if len(paths) != 2 {
+		t.Fatalf("expected two worktree paths, got %d", len(paths))
+	}
+	if paths[0] != "/tmp/project" || paths[1] != "/tmp/project.feature" {
+		t.Fatalf("unexpected worktree paths %#v", paths)
+	}
+}
+
+func TestSamePathCleansPaths(t *testing.T) {
+	if !samePath("/tmp/project/feature/..", "/tmp/project") {
+		t.Fatal("expected cleaned paths to match")
+	}
+}
+
+func TestDestructiveWorktreeRootsFindsPrimaryCheckout(t *testing.T) {
+	primary := filepath.Join(t.TempDir(), "project")
+	runGit(t, "init", primary)
+	runGit(t, "-C", primary, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial")
+	linked := filepath.Join(t.TempDir(), "project.feature")
+	runGit(t, "-C", primary, "worktree", "add", "-b", "feature", linked)
+	subdirectory := filepath.Join(linked, "nested")
+	if err := os.Mkdir(subdirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	checkout, repoRoot, err := destructiveWorktreeRoots(subdirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkout != linked {
+		t.Fatalf("expected linked checkout %q, got %q", linked, checkout)
+	}
+	if repoRoot != primary {
+		t.Fatalf("expected primary checkout %q, got %q", primary, repoRoot)
+	}
+}
+
+func TestDestructiveWorktreeRootsRejectsPrimaryCheckout(t *testing.T) {
+	primary := filepath.Join(t.TempDir(), "project")
+	runGit(t, "init", primary)
+
+	_, _, err := destructiveWorktreeRoots(primary)
+	if err == nil || err.Error() != "the primary checkout cannot be removed or merged" {
+		t.Fatalf("expected primary checkout error, got %v", err)
+	}
+}
+
+func TestIsRegisteredWorktreeTracksRemoval(t *testing.T) {
+	primary := filepath.Join(t.TempDir(), "project")
+	runGit(t, "init", primary)
+	runGit(t, "-C", primary, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial")
+	linked := filepath.Join(t.TempDir(), "project.feature")
+	runGit(t, "-C", primary, "worktree", "add", "-b", "feature", linked)
+
+	registered, err := isRegisteredWorktree(primary, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !registered {
+		t.Fatal("expected linked checkout to be registered")
+	}
+
+	runGit(t, "-C", primary, "worktree", "remove", linked)
+	registered, err = isRegisteredWorktree(primary, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registered {
+		t.Fatal("expected removed checkout not to be registered")
+	}
+}
+
+func runGit(t *testing.T, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, output)
 	}
 }

@@ -1,0 +1,42 @@
+id = "disintegrator.trunkr"
+name = "trunkr"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Use Worktrunk for Herdr worktrees in projects with .config/wt.toml."
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["mkdir", "-p", "bin"]
+
+[[build]]
+command = ["go", "build", "-o", "bin/trunkr", "./cmd/trunkr"]
+
+[[actions]]
+id = "create"
+title = "Worktree: create"
+description = "Create with Worktrunk when the project opts in, otherwise use Herdr."
+contexts = ["workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "create"]
+
+[[actions]]
+id = "open"
+title = "Worktree: open"
+description = "Open a Worktrunk or native Git worktree as a Herdr workspace."
+contexts = ["workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "open"]
+
+[[actions]]
+id = "remove"
+title = "Worktree: remove"
+description = "Remove with Worktrunk when the project opts in, otherwise use Herdr."
+contexts = ["workspace", "tab", "pane"]
+command = ["bin/trunkr", "action", "remove"]
+
+[[panes]]
+id = "runner"
+title = "Worktree"
+description = "Interactive Worktrunk and native worktree commands."
+placement = "popup"
+width = "80%"
+height = "70%"
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/trunkr\" runner"]

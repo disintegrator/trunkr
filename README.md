@@ -1,9 +1,7 @@
 # trunkr
 
-Use [Worktrunk](https://worktrunk.dev) for Herdr worktree operations only when
-the focused directory, or one of its parents, contains `.config/wt.toml`.
-Repositories without that file continue to use Herdr's native worktree
-commands.
+Use [Worktrunk](https://worktrunk.dev) for Herdr worktree creation, switching,
+and removal.
 
 Worktrunk creates and removes the Git checkout. The plugin opens every selected
 checkout with `herdr worktree open`, so Herdr retains native worktree provenance,
@@ -12,15 +10,22 @@ grouping, labels, status, and sidebar presentation.
 ## Requirements
 
 - Herdr 0.8.0 or newer
-- Worktrunk's `wt` executable for opted-in repositories
-- Go 1.25 or newer when linking a development checkout
+- Worktrunk's `wt` executable
+- Go 1.26.5 when linking a development checkout
 
-## Install for development
+## Install
+
+Install trunkr directly from GitHub:
 
 ```sh
-mkdir -p bin
-go build -o bin/trunkr ./cmd/trunkr
-herdr plugin link "$PWD"
+herdr plugin install disintegrator/trunkr
+```
+
+Confirm the plugin and its actions are available:
+
+```sh
+herdr plugin list --plugin disintegrator.trunkr
+herdr plugin action list --plugin disintegrator.trunkr
 ```
 
 ## Keybindings
@@ -78,8 +83,50 @@ selected worktree with Herdr's native sidebar grouping.
 
 ## Behavior
 
-| Action | `.config/wt.toml` found | Not found |
-| --- | --- | --- |
-| Create | `wt switch --create`, then `herdr worktree open` | `herdr worktree create` |
-| Open | `wt list`, then `herdr worktree open` | `herdr worktree list/open` |
-| Remove | `wt remove`, then close the Herdr workspace | `herdr worktree remove` |
+| Action | Behavior |
+| --- | --- |
+| Create | `wt switch --create`, then `herdr worktree open` |
+| Open | `wt list`, then `herdr worktree open` |
+| Remove | `wt remove`, then close the Herdr workspace |
+
+## Development
+
+Install [mise](https://mise.jdx.dev/) if it is not already available:
+
+```sh
+curl https://mise.run | sh
+```
+
+Install the pinned tools and verify the plugin:
+
+```sh
+mise install
+mise exec -- go test ./...
+mise exec -- go vet ./...
+```
+
+Build and link the working tree into Herdr:
+
+```sh
+mkdir -p bin
+mise exec -- go build -trimpath -o bin/trunkr ./cmd/trunkr
+herdr plugin link "$PWD"
+```
+
+`herdr plugin link` registers this checkout directly and does not run the
+manifest's `[[build]]` commands. Rebuild `bin/trunkr` after code changes.
+
+Invoke actions while developing:
+
+```sh
+herdr plugin action invoke disintegrator.trunkr.create
+herdr plugin action invoke disintegrator.trunkr.open
+herdr plugin action invoke disintegrator.trunkr.remove
+```
+
+Inspect action logs or unlink the development checkout:
+
+```sh
+herdr plugin log list --plugin disintegrator.trunkr
+herdr plugin unlink disintegrator.trunkr
+```

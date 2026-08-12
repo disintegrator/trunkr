@@ -1,0 +1,31 @@
+version: 2
+
+project_name: trunkr
+
+builds:
+  - main: ./cmd/trunkr
+    binary: trunkr
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - herdr-plugin.toml
+
+# --release-notes replaces git-log changelog generation. This pipe must remain
+# enabled or GoReleaser skips loading the Bumper-generated notes file.
+changelog:
+  disable: false

@@ -29,10 +29,9 @@ type invocationContext struct {
 }
 
 type worktree struct {
-	Branch          string
-	Path            string
-	Current         bool
-	OpenWorkspaceID string
+	Branch  string
+	Path    string
+	Current bool
 }
 
 type wtList struct {
@@ -43,16 +42,6 @@ type wtList struct {
 			Current bool   `json:"current"`
 		} `json:"worktree"`
 	} `json:"items"`
-}
-
-type nativeList struct {
-	Result struct {
-		Worktrees []struct {
-			Branch          *string `json:"branch"`
-			Path            string  `json:"path"`
-			OpenWorkspaceID *string `json:"open_workspace_id"`
-		} `json:"worktrees"`
-	} `json:"result"`
 }
 
 func main() {
@@ -145,14 +134,6 @@ func createWorktree(cwd string) error {
 		return err
 	}
 
-	if !usesWorktrunk(cwd) {
-		args := []string{"worktree", "create", "--cwd", cwd, "--branch", branch, "--focus"}
-		if base != "" {
-			args = append(args, "--base", base)
-		}
-		return runHerdr(args...)
-	}
-
 	args := []string{"-C", cwd, "switch", "--create", branch, "--no-cd", "--format=json"}
 	if base != "" {
 		args = append(args, "--base", base)
@@ -241,9 +222,6 @@ func worktreeLabel(item worktree) string {
 	if item.Current {
 		marker = "●"
 		status = "  current"
-	} else if item.OpenWorkspaceID != "" {
-		marker = "◆"
-		status = "  open"
 	}
 	return fmt.Sprintf("%s %-28s %s%s", marker, item.Branch, displayPath(item.Path), status)
 }
@@ -269,9 +247,6 @@ func removeWorktree(cwd, workspaceID string) error {
 		return nil
 	}
 
-	if !usesWorktrunk(cwd) {
-		return runHerdr("worktree", "remove", "--workspace", workspaceID)
-	}
 	primaryCheckout, err := commandOutput("git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return err
@@ -292,60 +267,22 @@ func removeWorktree(cwd, workspaceID string) error {
 }
 
 func listWorktrees(cwd string) ([]worktree, error) {
-	if usesWorktrunk(cwd) {
-		var list wtList
-		if err := runJSONCommand(&list, "wt", "-C", cwd, "list", "--format=json", "--config-set", "list.json-schema=2"); err != nil {
-			return nil, err
-		}
-		items := make([]worktree, 0, len(list.Items))
-		for _, item := range list.Items {
-			if item.Worktree == nil {
-				continue
-			}
-			branch := "detached"
-			if item.Branch != nil {
-				branch = *item.Branch
-			}
-			items = append(items, worktree{Branch: branch, Path: item.Worktree.Path, Current: item.Worktree.Current})
-		}
-		return items, nil
-	}
-
-	var list nativeList
-	if err := runJSONCommand(&list, herdrBinary(), "worktree", "list", "--cwd", cwd); err != nil {
+	var list wtList
+	if err := runJSONCommand(&list, "wt", "-C", cwd, "list", "--format=json", "--config-set", "list.json-schema=2"); err != nil {
 		return nil, err
 	}
-	items := make([]worktree, 0, len(list.Result.Worktrees))
-	for _, item := range list.Result.Worktrees {
+	items := make([]worktree, 0, len(list.Items))
+	for _, item := range list.Items {
+		if item.Worktree == nil {
+			continue
+		}
 		branch := "detached"
 		if item.Branch != nil {
 			branch = *item.Branch
 		}
-		openWorkspaceID := ""
-		if item.OpenWorkspaceID != nil {
-			openWorkspaceID = *item.OpenWorkspaceID
-		}
-		items = append(items, worktree{Branch: branch, Path: item.Path, OpenWorkspaceID: openWorkspaceID})
+		items = append(items, worktree{Branch: branch, Path: item.Worktree.Path, Current: item.Worktree.Current})
 	}
 	return items, nil
-}
-
-func usesWorktrunk(cwd string) bool {
-	dir, err := filepath.Abs(cwd)
-	if err != nil {
-		return false
-	}
-	for {
-		info, err := os.Stat(filepath.Join(dir, ".config", "wt.toml"))
-		if err == nil && !info.IsDir() {
-			return true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return false
-		}
-		dir = parent
-	}
 }
 
 func prompt(reader *bufio.Reader, label string) (value string, err error) {

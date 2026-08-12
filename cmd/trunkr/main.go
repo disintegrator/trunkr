@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
@@ -21,6 +24,10 @@ import (
 const pluginID = "disintegrator.trunkr"
 
 var errPromptCancelled = errors.New("prompt cancelled")
+
+// Keep handoff barriers open until the runner process exits. The detached
+// helper receives EOF only after the popup command has completed.
+var handoffBarriers []*os.File
 
 type invocationContext struct {
 	FocusedPaneCWD string `json:"focused_pane_cwd"`
@@ -55,8 +62,11 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) == 3 && args[0] == "open-after-popup" {
+		return openAfterPopup(args[1], args[2])
+	}
 	if len(args) != 2 && !(len(args) == 1 && args[0] == "runner") {
-		return errors.New("usage: trunkr action <create|open|remove> | runner")
+		return errors.New("usage: trunkr action <create|open|remove> | runner | open-after-popup <cwd> <path>")
 	}
 
 	if args[0] == "action" {
@@ -147,7 +157,7 @@ func createWorktree(cwd string) error {
 	if result.Path == "" {
 		return errors.New("Worktrunk did not return the new worktree path")
 	}
-	return runHerdr("worktree", "open", "--cwd", cwd, "--path", result.Path, "--focus")
+	return handoffOpen(cwd, result.Path)
 }
 
 func openWorktree(cwd string) error {
@@ -167,7 +177,112 @@ func openWorktree(cwd string) error {
 		return err
 	}
 
-	return runHerdr("worktree", "open", "--cwd", cwd, "--path", selected, "--focus")
+	return handoffOpen(cwd, selected)
+}
+
+func handoffOpen(cwd, path string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate trunkr executable: %w", err)
+	}
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("open null device: %w", err)
+	}
+	defer devNull.Close()
+	output := io.Writer(devNull)
+	if stateDir := os.Getenv("HERDR_PLUGIN_STATE_DIR"); stateDir != "" {
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			return fmt.Errorf("create plugin state directory: %w", err)
+		}
+		logFile, err := os.OpenFile(filepath.Join(stateDir, "open.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("open worktree handoff log: %w", err)
+		}
+		defer logFile.Close()
+		output = logFile
+	}
+	barrierReader, barrierWriter, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("create worktree handoff barrier: %w", err)
+	}
+
+	cmd := exec.Command(executable, "open-after-popup", cwd, path)
+	cmd.Stdin = devNull
+	cmd.Stdout = output
+	cmd.Stderr = output
+	cmd.ExtraFiles = []*os.File{barrierReader}
+	cmd.Env = append(os.Environ(), "HERDR_TRUNKR_BARRIER_FD=3")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		_ = barrierReader.Close()
+		_ = barrierWriter.Close()
+		return fmt.Errorf("start worktree opener: %w", err)
+	}
+	if err := barrierReader.Close(); err != nil {
+		_ = barrierWriter.Close()
+		return fmt.Errorf("close worktree handoff reader: %w", err)
+	}
+	handoffBarriers = append(handoffBarriers, barrierWriter)
+	return nil
+}
+
+func openAfterPopup(cwd, path string) error {
+	if barrierFD := os.Getenv("HERDR_TRUNKR_BARRIER_FD"); barrierFD != "" {
+		fd, err := strconv.Atoi(barrierFD)
+		if err != nil {
+			return fmt.Errorf("parse worktree handoff barrier: %w", err)
+		}
+		barrier := os.NewFile(uintptr(fd), "trunkr-runner-barrier")
+		if barrier == nil {
+			return errors.New("open worktree handoff barrier")
+		}
+		if _, err := io.Copy(io.Discard, barrier); err != nil {
+			return fmt.Errorf("wait for trunkr runner: %w", err)
+		}
+		if err := barrier.Close(); err != nil {
+			return fmt.Errorf("close worktree handoff barrier: %w", err)
+		}
+	}
+
+	if err := closePopup(); err != nil {
+		return err
+	}
+	return runHerdr("worktree", "open", "--cwd", cwd, "--path", path, "--focus")
+}
+
+func closePopup() error {
+	socketPath := os.Getenv("HERDR_SOCKET_PATH")
+	if socketPath == "" {
+		return nil
+	}
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("connect to Herdr: %w", err)
+	}
+	defer conn.Close()
+
+	request := map[string]any{
+		"id":     "trunkr:popup-close",
+		"method": "popup.close",
+		"params": map[string]any{},
+	}
+	if err := json.NewEncoder(conn).Encode(request); err != nil {
+		return fmt.Errorf("close trunkr popup: %w", err)
+	}
+	var response struct {
+		Error *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		return fmt.Errorf("read popup close response: %w", err)
+	}
+	if response.Error != nil && response.Error.Code != "popup_not_open" {
+		return fmt.Errorf("close trunkr popup: %s", response.Error.Message)
+	}
+	return nil
 }
 
 func selectWorktree(worktrees []worktree) (string, error) {

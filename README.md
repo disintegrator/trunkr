@@ -1,7 +1,7 @@
 # trunkr
 
 Use [Worktrunk](https://worktrunk.dev) for Herdr worktree creation, switching,
-and removal.
+merging, and removal.
 
 Worktrunk creates and removes the Git checkout. The plugin opens every selected
 checkout with `herdr worktree open`, so Herdr retains native worktree provenance,
@@ -53,6 +53,12 @@ command = "disintegrator.trunkr.open"
 description = "open worktree"
 
 [[keys.command]]
+key = "prefix+shift+m"
+type = "plugin_action"
+command = "disintegrator.trunkr.merge"
+description = "merge worktree"
+
+[[keys.command]]
 key = "prefix+d"
 type = "plugin_action"
 command = "disintegrator.trunkr.remove"
@@ -87,7 +93,8 @@ selected worktree with Herdr's native sidebar grouping.
 | --- | --- |
 | Create | `wt switch --create`, then `herdr worktree open` |
 | Open | `wt list`, then `herdr worktree open` |
-| Remove | `wt remove`, then close the Herdr workspace |
+| Merge | `wt merge`, then close the removed Herdr workspace and return to the primary checkout |
+| Remove | `wt remove`, then close the Herdr workspace and return to the primary checkout |
 
 ## Development
 
@@ -121,6 +128,7 @@ Invoke actions while developing:
 ```sh
 herdr plugin action invoke disintegrator.trunkr.create
 herdr plugin action invoke disintegrator.trunkr.open
+herdr plugin action invoke disintegrator.trunkr.merge
 herdr plugin action invoke disintegrator.trunkr.remove
 ```
 

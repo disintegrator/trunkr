@@ -1,0 +1,7 @@
+[[groups]]
+name = "trunkr"
+display_name = "trunkr"
+changelog_cmd = ["bumper", "builtins", "amendlog:default"]
+cat_cmd = ["bumper", "builtins", "cat:default"]
+current_cmd = ["bumper", "builtins", "current:toml", "--path", "herdr-plugin.toml", "--key", "version"]
+next_cmd = ["bumper", "builtins", "next:toml", "--path", "herdr-plugin.toml", "--key", "version"]

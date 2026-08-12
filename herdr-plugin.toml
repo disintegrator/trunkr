@@ -1,34 +1,39 @@
 id = "disintegrator.trunkr"
 name = "trunkr"
-version = "0.1.0"
+version = "0.0.0"
 min_herdr_version = "0.8.0"
-description = "Use Worktrunk for Herdr worktrees in projects with .config/wt.toml."
+description = "Use Worktrunk for Herdr worktree creation, switching, and removal."
 platforms = ["linux", "macos"]
+
+# GitHub installs are full repository checkouts. Remove the untrusted
+# development mise config before invoking tools that may resolve through mise.
+[[build]]
+command = ["rm", "-f", "mise.toml"]
 
 [[build]]
 command = ["mkdir", "-p", "bin"]
 
 [[build]]
-command = ["go", "build", "-o", "bin/trunkr", "./cmd/trunkr"]
+command = ["go", "build", "-trimpath", "-o", "bin/trunkr", "./cmd/trunkr"]
 
 [[actions]]
 id = "create"
 title = "Worktree: create"
-description = "Create with Worktrunk when the project opts in, otherwise use Herdr."
+description = "Create a worktree with Worktrunk and open it in Herdr."
 contexts = ["workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "create"]
 
 [[actions]]
 id = "open"
 title = "Worktree: open"
-description = "Open a Worktrunk or native Git worktree as a Herdr workspace."
+description = "Open a Worktrunk worktree as a Herdr workspace."
 contexts = ["workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "open"]
 
 [[actions]]
 id = "remove"
 title = "Worktree: remove"
-description = "Remove with Worktrunk when the project opts in, otherwise use Herdr."
+description = "Remove the current worktree with Worktrunk."
 contexts = ["workspace", "tab", "pane"]
 command = ["bin/trunkr", "action", "remove"]
 

@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths: [herdr-plugin.toml]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release-cli:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Mise
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: true
+          cache: true
+          env: false
+
+      - name: Read version and release notes from Bumper
+        id: bumper
+        shell: bash
+        run: |
+          bumper_version="$(mise exec -- bumper current)"
+          tag="v$bumper_version"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists. Nothing to release."
+            exit 0
+          fi
+
+          echo "GORELEASER_CURRENT_TAG=$tag" >> "$GITHUB_ENV"
+
+          notes_file="$(mktemp)"
+          echo "RELEASE_NOTES_FILE=$notes_file" >> "$GITHUB_ENV"
+          mise exec -- bumper cat --version "$bumper_version" > "$notes_file"
+
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: ${{ steps.bumper.outputs.release == 'true' }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${GORELEASER_CURRENT_TAG}"
+          git push origin "${GORELEASER_CURRENT_TAG}"
+
+      - name: Run GoReleaser
+        if: ${{ steps.bumper.outputs.release == 'true' }}
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean --release-notes "${{ env.RELEASE_NOTES_FILE }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,9 +3,30 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"testing"
 )
+
+func TestHerdrSourceCWDUsesRepositoryRoot(t *testing.T) {
+	var context invocationContext
+	err := json.Unmarshal([]byte(`{
+		"focused_pane_cwd":"/tmp/project.feature",
+		"worktree":{"repo_root":"/tmp/project"}
+	}`), &context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := herdrSourceCWD(context, context.FocusedPaneCWD); got != "/tmp/project" {
+		t.Fatalf("expected repository root, got %q", got)
+	}
+}
+
+func TestHerdrSourceCWDFallsBackToFocusedCheckout(t *testing.T) {
+	if got := herdrSourceCWD(invocationContext{}, "/tmp/project"); got != "/tmp/project" {
+		t.Fatalf("expected focused checkout, got %q", got)
+	}
+}
 
 func TestReadRawPromptAcceptsInput(t *testing.T) {
 	var output bytes.Buffer

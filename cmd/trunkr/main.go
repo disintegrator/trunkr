@@ -33,6 +33,9 @@ type invocationContext struct {
 	FocusedPaneCWD string `json:"focused_pane_cwd"`
 	WorkspaceCWD   string `json:"workspace_cwd"`
 	WorkspaceID    string `json:"workspace_id"`
+	Worktree       *struct {
+		RepoRoot string `json:"repo_root"`
+	} `json:"worktree"`
 }
 
 type worktree struct {
@@ -75,17 +78,21 @@ func run(args []string) error {
 
 	action := os.Getenv("HERDR_TRUNKR_ACTION")
 	cwd := os.Getenv("HERDR_TRUNKR_CWD")
+	sourceCWD := os.Getenv("HERDR_TRUNKR_SOURCE_CWD")
 	workspaceID := os.Getenv("HERDR_TRUNKR_WORKSPACE_ID")
 	if action == "" || cwd == "" {
 		return errors.New("runner context is missing")
+	}
+	if sourceCWD == "" {
+		sourceCWD = cwd
 	}
 
 	fmt.Printf("Worktree: %s\nProject: %s\n\n", action, cwd)
 	switch action {
 	case "create":
-		return createWorktree(cwd)
+		return createWorktree(cwd, sourceCWD)
 	case "open":
-		return openWorktree(cwd)
+		return openWorktree(cwd, sourceCWD)
 	case "remove":
 		return removeWorktree(cwd, workspaceID)
 	default:
@@ -109,6 +116,7 @@ func openRunner(action string) error {
 	if cwd == "" {
 		return errors.New("the focused Herdr workspace has no working directory")
 	}
+	sourceCWD := herdrSourceCWD(context, cwd)
 
 	herdr := os.Getenv("HERDR_BIN_PATH")
 	if herdr == "" {
@@ -121,6 +129,7 @@ func openRunner(action string) error {
 		"--cwd", cwd,
 		"--env", "HERDR_TRUNKR_ACTION=" + action,
 		"--env", "HERDR_TRUNKR_CWD=" + cwd,
+		"--env", "HERDR_TRUNKR_SOURCE_CWD=" + sourceCWD,
 		"--env", "HERDR_TRUNKR_WORKSPACE_ID=" + context.WorkspaceID,
 		"--focus",
 	}
@@ -130,7 +139,14 @@ func openRunner(action string) error {
 	return cmd.Run()
 }
 
-func createWorktree(cwd string) error {
+func herdrSourceCWD(context invocationContext, fallback string) string {
+	if context.Worktree != nil && context.Worktree.RepoRoot != "" {
+		return context.Worktree.RepoRoot
+	}
+	return fallback
+}
+
+func createWorktree(cwd, sourceCWD string) error {
 	reader := bufio.NewReader(os.Stdin)
 	branch, err := prompt(reader, "New branch")
 	if err != nil {
@@ -157,10 +173,10 @@ func createWorktree(cwd string) error {
 	if result.Path == "" {
 		return errors.New("Worktrunk did not return the new worktree path")
 	}
-	return handoffOpen(cwd, result.Path)
+	return handoffOpen(sourceCWD, result.Path)
 }
 
-func openWorktree(cwd string) error {
+func openWorktree(cwd, sourceCWD string) error {
 	worktrees, err := listWorktrees(cwd)
 	if err != nil {
 		return err
@@ -177,7 +193,7 @@ func openWorktree(cwd string) error {
 		return err
 	}
 
-	return handoffOpen(cwd, selected)
+	return handoffOpen(sourceCWD, selected)
 }
 
 func handoffOpen(cwd, path string) error {
